@@ -21,6 +21,7 @@ import {
   Image as ImageIcon
 } from 'lucide-react';
 import { ReadyProduct, Language } from '../types';
+import { compressImage } from '../utils/imageCompressor';
 
 interface AddProductWizardProps {
   language: Language;
@@ -157,17 +158,22 @@ export function AddProductWizard({ language, onClose, onProductCreated }: AddPro
     setDimensions(p.dimensions);
   };
 
-  // Image Upload handler
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Image Upload handler with instant compression
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        setOriginalImage(result);
-        setProductImage(result);
-      };
-      reader.readAsDataURL(file);
+      setIsProcessingImage(true);
+      try {
+        const compressed = await compressImage(file, 900, 900, 0.78);
+        setOriginalImage(compressed);
+        setProductImage(compressed);
+      } catch (err) {
+        console.error('Failed to compress image:', err);
+      } finally {
+        setIsProcessingImage(false);
+      }
     }
   };
 

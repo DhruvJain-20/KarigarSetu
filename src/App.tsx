@@ -75,6 +75,7 @@ import { OrdersManagementView } from './components/OrdersManagementView';
 import { UserProfileView } from './components/UserProfileView';
 import { MarketplaceStorefront } from './components/MarketplaceStorefront';
 import { VoiceAssistantModal } from './components/VoiceAssistantModal';
+import { safeGetItem, safeSetItem } from './utils/safeStorage';
 
 const INITIAL_BOOKINGS: BookingRequest[] = [
   {
@@ -117,58 +118,52 @@ export default function App() {
 
   // Persistence for products, orders, profile
   const [products, setProducts] = useState<ReadyProduct[]>(() => {
-    const saved = localStorage.getItem('ks_ready_products');
-    return saved ? JSON.parse(saved) : INITIAL_READY_PRODUCTS;
+    return safeGetItem('ks_ready_products', INITIAL_READY_PRODUCTS);
   });
 
   const [orders, setOrders] = useState<ProductOrder[]>(() => {
-    const saved = localStorage.getItem('ks_product_orders');
-    return saved ? JSON.parse(saved) : INITIAL_PRODUCT_ORDERS;
+    return safeGetItem('ks_product_orders', INITIAL_PRODUCT_ORDERS);
   });
 
   const [artisanProfile, setArtisanProfile] = useState<ArtisanUserProfile>(() => {
-    const saved = localStorage.getItem('ks_artisan_profile');
-    return saved ? JSON.parse(saved) : DEFAULT_ARTISAN_PROFILE;
+    return safeGetItem('ks_artisan_profile', DEFAULT_ARTISAN_PROFILE);
   });
 
   // Persistence for karigars, jobs, bookings
   const [karigars, setKarigars] = useState<Karigar[]>(() => {
-    const saved = localStorage.getItem('ks_karigars');
-    return saved ? JSON.parse(saved) : INITIAL_KARIGARS;
+    return safeGetItem('ks_karigars', INITIAL_KARIGARS);
   });
 
   const [jobs, setJobs] = useState<JobPost[]>(() => {
-    const saved = localStorage.getItem('ks_jobs');
-    return saved ? JSON.parse(saved) : INITIAL_JOB_POSTS;
+    return safeGetItem('ks_jobs', INITIAL_JOB_POSTS);
   });
 
   const [bookings, setBookings] = useState<BookingRequest[]>(() => {
-    const saved = localStorage.getItem('ks_bookings');
-    return saved ? JSON.parse(saved) : INITIAL_BOOKINGS;
+    return safeGetItem('ks_bookings', INITIAL_BOOKINGS);
   });
 
   useEffect(() => {
-    localStorage.setItem('ks_ready_products', JSON.stringify(products));
+    safeSetItem('ks_ready_products', products);
   }, [products]);
 
   useEffect(() => {
-    localStorage.setItem('ks_product_orders', JSON.stringify(orders));
+    safeSetItem('ks_product_orders', orders);
   }, [orders]);
 
   useEffect(() => {
-    localStorage.setItem('ks_artisan_profile', JSON.stringify(artisanProfile));
+    safeSetItem('ks_artisan_profile', artisanProfile);
   }, [artisanProfile]);
 
   useEffect(() => {
-    localStorage.setItem('ks_karigars', JSON.stringify(karigars));
+    safeSetItem('ks_karigars', karigars);
   }, [karigars]);
 
   useEffect(() => {
-    localStorage.setItem('ks_jobs', JSON.stringify(jobs));
+    safeSetItem('ks_jobs', jobs);
   }, [jobs]);
 
   useEffect(() => {
-    localStorage.setItem('ks_bookings', JSON.stringify(bookings));
+    safeSetItem('ks_bookings', bookings);
   }, [bookings]);
 
   // Modal states
@@ -613,7 +608,7 @@ export default function App() {
                       key={karigar.id}
                       karigar={karigar}
                       language={language}
-                      onSelectProfile={setSelectedKarigarForProfile}
+                      onViewProfile={setSelectedKarigarForProfile}
                       onRequestBooking={(k) => setSelectedKarigarForProfile(k)}
                     />
                   ))}
