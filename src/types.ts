@@ -1,5 +1,24 @@
 export type Language = 'en' | 'hi';
 
+export type UserRole = 'artisan' | 'buyer' | 'admin';
+
+export interface UserProfile {
+  id: string; // Real Supabase Auth UUID
+  full_name: string;
+  email: string;
+  role: UserRole;
+  language?: Language;
+  avatar_url?: string;
+  created_at?: string;
+  specialization?: string;
+  phone?: string;
+  city?: string;
+  state?: string;
+  business_name?: string;
+  workshop_address?: string;
+  upi_id?: string;
+}
+
 export type TradeCategory =
   | 'carpentry'
   | 'electrical'

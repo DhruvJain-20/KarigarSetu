@@ -22,7 +22,8 @@ import {
   CreditCard,
   Sparkles,
   ShoppingBag,
-  UserCheck
+  UserCheck,
+  LogOut
 } from 'lucide-react';
 import { ArtisanUserProfile, Language } from '../types';
 
@@ -34,6 +35,7 @@ interface UserProfileViewProps {
   onOpenVoiceAssistant: () => void;
   onSwitchToMarketplace: () => void;
   onBack: () => void;
+  onLogout: () => void;
 }
 
 export function UserProfileView({
@@ -44,6 +46,7 @@ export function UserProfileView({
   onOpenVoiceAssistant,
   onSwitchToMarketplace,
   onBack,
+  onLogout,
 }: UserProfileViewProps) {
   const [activeModal, setActiveModal] = useState<'business' | 'bank' | 'notifications' | 'help' | null>(null);
 
@@ -272,6 +275,28 @@ export function UserProfileView({
             </div>
           </div>
           <ChevronRight className="w-5 h-5 text-stone-400 group-hover:text-stone-700 transition-transform group-hover:translate-x-0.5" />
+        </button>
+
+        {/* Real Supabase Logout */}
+        <button
+          type="button"
+          onClick={onLogout}
+          className="w-full px-5 py-4 flex items-center justify-between hover:bg-rose-50/60 transition-colors text-left group"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+              <LogOut className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="font-bold text-rose-800 text-sm sm:text-base">
+                Log Out of Account
+              </div>
+              <div className="text-xs text-stone-500">
+                Sign out of your Supabase session
+              </div>
+            </div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-stone-400 group-hover:text-rose-600 transition-transform group-hover:translate-x-0.5" />
         </button>
       </div>
 

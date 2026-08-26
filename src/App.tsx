@@ -42,7 +42,9 @@ import {
   User,
   Mic,
   Store,
-  ArrowLeft
+  ArrowLeft,
+  LogOut,
+  Loader2
 } from 'lucide-react';
 
 import {
@@ -53,7 +55,9 @@ import {
   TradeCategory,
   ReadyProduct,
   ProductOrder,
-  ArtisanUserProfile
+  ArtisanUserProfile,
+  UserProfile,
+  UserRole
 } from './types';
 import { INITIAL_KARIGARS, INITIAL_JOB_POSTS } from './data/mockKarigars';
 import {
@@ -75,6 +79,8 @@ import { OrdersManagementView } from './components/OrdersManagementView';
 import { UserProfileView } from './components/UserProfileView';
 import { MarketplaceStorefront } from './components/MarketplaceStorefront';
 import { VoiceAssistantModal } from './components/VoiceAssistantModal';
+import { AuthPage } from './components/AuthPage';
+import { supabase } from './supabaseClient';
 import { safeGetItem, safeSetItem } from './utils/safeStorage';
 
 const INITIAL_BOOKINGS: BookingRequest[] = [
@@ -111,6 +117,12 @@ const INITIAL_BOOKINGS: BookingRequest[] = [
 export default function App() {
   const [language, setLanguage] = useState<Language>('en');
 
+  // Supabase Auth State
+  const [session, setSession] = useState<any>(null);
+  const [authUser, setAuthUser] = useState<any>(null);
+  const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
   // Modes: 'artisan_hub' (Screenshots 1-7), 'marketplace' (Buy Ready Products), 'hire_services' (Find trade karigars)
   const [appMode, setAppMode] = useState<'artisan_hub' | 'marketplace' | 'hire_services'>('artisan_hub');
   const [artisanTab, setArtisanTab] = useState<'home' | 'products' | 'orders' | 'profile'>('home');
@@ -141,6 +153,145 @@ export default function App() {
   const [bookings, setBookings] = useState<BookingRequest[]>(() => {
     return safeGetItem('ks_bookings', INITIAL_BOOKINGS);
   });
+
+  // Fetch or upsert real profile from Supabase
+  const loadUserProfile = async (user: any) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      let profileData: UserProfile;
+
+      if (data) {
+        profileData = data as UserProfile;
+      } else {
+        let storedOAuthRole: UserRole | null = null;
+        try {
+          storedOAuthRole = localStorage.getItem('ks_pending_oauth_role') as UserRole | null;
+          localStorage.removeItem('ks_pending_oauth_role');
+        } catch (e) {
+          // ignore
+        }
+
+        const defaultRole: UserRole = storedOAuthRole || (user.user_metadata?.role as UserRole) || 'artisan';
+        const defaultName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || 'Artisan';
+        const defaultAvatar = user.user_metadata?.avatar_url || user.user_metadata?.picture || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(defaultName)}&backgroundColor=963e20,1d5c4a`;
+
+        const newProfile: UserProfile = {
+          id: user.id,
+          full_name: defaultName,
+          email: user.email || '',
+          role: defaultRole,
+          language: language,
+          avatar_url: defaultAvatar,
+          created_at: new Date().toISOString(),
+        };
+
+        const { error: insertError } = await supabase
+          .from('profiles')
+          .upsert(newProfile, { onConflict: 'id' });
+
+        if (insertError) {
+          console.warn('Could not insert profile in Supabase:', insertError.message);
+        }
+        profileData = newProfile;
+      }
+
+      setCurrentUserProfile(profileData);
+
+      // Automatically sync artisan profile view data with real Supabase user
+      setArtisanProfile((prev) => ({
+        ...prev,
+        id: profileData.id,
+        name: profileData.full_name || 'Artisan',
+        hindiName: profileData.full_name || 'कारीगर',
+        avatarUrl: profileData.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(profileData.full_name || 'User')}&backgroundColor=963e20,1d5c4a`,
+        businessDetails: {
+          ...prev.businessDetails,
+          businessName: profileData.business_name || `${profileData.full_name}'s Handcraft Workshop`,
+          email: profileData.email || user.email || '',
+          phone: profileData.phone || prev.businessDetails.phone,
+        },
+      }));
+
+      // Role-based screen selection
+      if (profileData.role === 'buyer') {
+        setAppMode('marketplace');
+      } else if (profileData.role === 'admin') {
+        setAppMode('hire_services');
+        setHireServicesTab('explore');
+      } else {
+        setAppMode('artisan_hub');
+        setArtisanTab('home');
+      }
+    } catch (err) {
+      console.error('Error loading user profile:', err);
+    }
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function initAuth() {
+      try {
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
+        if (!isMounted) return;
+
+        if (initialSession?.user) {
+          setSession(initialSession);
+          setAuthUser(initialSession.user);
+          await loadUserProfile(initialSession.user);
+        } else {
+          setSession(null);
+          setAuthUser(null);
+          setCurrentUserProfile(null);
+        }
+      } catch (err) {
+        console.error('Failed to get Supabase session:', err);
+      } finally {
+        if (isMounted) setIsAuthLoading(false);
+      }
+    }
+
+    initAuth();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, currentSession) => {
+      if (!isMounted) return;
+
+      if (currentSession?.user) {
+        setSession(currentSession);
+        setAuthUser(currentSession.user);
+        await loadUserProfile(currentSession.user);
+      } else {
+        setSession(null);
+        setAuthUser(null);
+        setCurrentUserProfile(null);
+      }
+      setIsAuthLoading(false);
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error('Sign out error:', err);
+    }
+    setSession(null);
+    setAuthUser(null);
+    setCurrentUserProfile(null);
+    showToast(language === 'hi' ? 'आप सफलतापूर्वक लॉगआउट हो गए हैं' : 'Logged out successfully');
+  };
 
   useEffect(() => {
     safeSetItem('ks_ready_products', products);
@@ -318,6 +469,44 @@ export default function App() {
     showToast(language === 'hi' ? 'आवेदन भेजा गया! नियोक्ता आपसे संपर्क करेंगे।' : 'Proposal submitted! Client has been notified.');
   };
 
+  // Auth Loading Splash Screen
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-[#FAF7F2] flex flex-col items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <div className="w-16 h-16 rounded-3xl bg-[#963E20] flex items-center justify-center text-white shadow-xl shadow-amber-950/15 animate-bounce">
+            <Hammer className="w-8 h-8 text-amber-200" />
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-2xl font-bold font-serif text-[#963E20]">KarigarSetu</h2>
+            <p className="text-xs text-stone-600 flex items-center justify-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-[#963E20]" />
+              <span>Verifying Supabase Session & Profile...</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // If not authenticated, show real Supabase Auth Screen
+  if (!session || !authUser) {
+    return (
+      <AuthPage
+        language={language}
+        onToggleLanguage={() => setLanguage(language === 'en' ? 'hi' : 'en')}
+        onAuthSuccess={async () => {
+          const { data: { session: freshSession } } = await supabase.auth.getSession();
+          if (freshSession?.user) {
+            setSession(freshSession);
+            setAuthUser(freshSession.user);
+            await loadUserProfile(freshSession.user);
+          }
+        }}
+      />
+    );
+  }
+
   return (
     <div id="karigarsetu-root" className="min-h-screen bg-[#FAF7F2] text-slate-900 flex flex-col font-sans selection:bg-amber-200 selection:text-amber-950">
       
@@ -403,8 +592,26 @@ export default function App() {
               </button>
             </div>
 
-            {/* Language Toggle & Actions */}
+            {/* User Profile & Actions */}
             <div className="flex items-center gap-2">
+              {/* Authenticated user pill */}
+              <div className="hidden lg:flex items-center gap-2 px-2.5 py-1 bg-stone-100/90 rounded-full border border-stone-200/80">
+                <img
+                  src={currentUserProfile?.avatar_url || artisanProfile.avatarUrl}
+                  alt={currentUserProfile?.full_name || 'User'}
+                  className="w-6 h-6 rounded-full object-cover border border-amber-900/20"
+                />
+                <div className="text-left text-[11px] leading-tight">
+                  <div className="font-bold text-stone-900 truncate max-w-[100px]">
+                    {currentUserProfile?.full_name?.split(' ')[0] || 'User'}
+                  </div>
+                  <div className="text-[9px] uppercase tracking-wider font-extrabold text-[#963E20]">
+                    {currentUserProfile?.role || 'artisan'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Language Switch */}
               <button
                 id="btn-language-toggle"
                 onClick={() => setLanguage(language === 'en' ? 'hi' : 'en')}
@@ -414,12 +621,22 @@ export default function App() {
                 {language === 'en' ? 'हिन्दी' : 'English'}
               </button>
 
+              {/* AI Voice Assistant */}
               <button
                 onClick={() => setIsVoiceAssistantOpen(true)}
                 className="w-9 h-9 rounded-full bg-amber-100/70 hover:bg-amber-200 text-[#963E20] flex items-center justify-center transition-colors"
                 title="AI Voice Assistant"
               >
                 <Mic className="w-4 h-4" />
+              </button>
+
+              {/* Real Supabase Logout */}
+              <button
+                onClick={handleLogout}
+                className="w-9 h-9 rounded-full bg-rose-50 hover:bg-rose-100 text-rose-700 flex items-center justify-center transition-colors border border-rose-200/60"
+                title={language === 'hi' ? 'लॉगआउट करें' : 'Log Out'}
+              >
+                <LogOut className="w-4 h-4" />
               </button>
             </div>
 
@@ -501,14 +718,31 @@ export default function App() {
               <UserProfileView
                 language={language}
                 profile={artisanProfile}
-                onUpdateProfile={(updated) => {
+                onUpdateProfile={async (updated) => {
                   setArtisanProfile(updated);
+                  // Also update profile in Supabase profiles table
+                  if (authUser?.id) {
+                    await supabase
+                      .from('profiles')
+                      .update({
+                        full_name: updated.name,
+                        phone: updated.businessDetails.phone,
+                        business_name: updated.businessDetails.businessName,
+                        workshop_address: updated.businessDetails.workshopAddress,
+                        city: updated.businessDetails.city,
+                        state: updated.businessDetails.state,
+                        upi_id: updated.bankDetails.upiId,
+                        avatar_url: updated.avatarUrl,
+                      })
+                      .eq('id', authUser.id);
+                  }
                   showToast('Profile details updated successfully');
                 }}
                 onToggleLanguage={() => setLanguage(language === 'en' ? 'hi' : 'en')}
                 onOpenVoiceAssistant={() => setIsVoiceAssistantOpen(true)}
                 onSwitchToMarketplace={() => setAppMode('marketplace')}
                 onBack={() => setArtisanTab('home')}
+                onLogout={handleLogout}
               />
             )}
           </div>
