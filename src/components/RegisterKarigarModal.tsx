@@ -27,7 +27,7 @@ export const RegisterKarigarModal: React.FC<RegisterKarigarModalProps> = ({
 
   const [name, setName] = useState('');
   const [hindiName, setHindiName] = useState('');
-  const [trade, setTrade] = useState<TradeCategory>('carpentry');
+  const [trade, setTrade] = useState<TradeCategory>('handloom');
   const [specialization, setSpecialization] = useState('');
   const [experienceYears, setExperienceYears] = useState<number>(8);
   const [city, setCity] = useState('Delhi NCR');

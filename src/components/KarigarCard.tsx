@@ -29,7 +29,7 @@ export const KarigarCard: React.FC<KarigarCardProps> = ({
   onRequestBooking,
 }) => {
   const t = TRANSLATIONS[language];
-  const meta = TRADE_META[karigar.trade] || TRADE_META.carpentry;
+  const meta = TRADE_META[karigar.trade] || TRADE_META.handloom;
 
   const displayName = language === 'hi' ? karigar.hindiName : karigar.name;
   const displaySpecialization =

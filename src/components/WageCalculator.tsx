@@ -19,14 +19,14 @@ interface WageCalculatorProps {
 export const WageCalculator: React.FC<WageCalculatorProps> = ({ language }) => {
   const t = TRANSLATIONS[language];
 
-  const [trade, setTrade] = useState<TradeCategory>('carpentry');
+  const [trade, setTrade] = useState<TradeCategory>('handloom');
   const [cityTier, setCityTier] = useState<'tier1' | 'tier2' | 'tier3'>('tier2');
   const [workUnits, setWorkUnits] = useState<number>(4); // e.g. days or points
   const [calculationMode, setCalculationMode] = useState<'daily' | 'sqft' | 'points'>('daily');
   const [includeHelper, setIncludeHelper] = useState(true);
 
   // Benchmarking calculation
-  const meta = TRADE_META[trade] || TRADE_META.carpentry;
+  const meta = TRADE_META[trade] || TRADE_META.handloom;
   const tierMultiplier = cityTier === 'tier1' ? 1.25 : cityTier === 'tier2' ? 1.0 : 0.85;
 
   const baseDailyMaster = meta.avgDailyWage * tierMultiplier;
@@ -42,25 +42,33 @@ export const WageCalculator: React.FC<WageCalculatorProps> = ({ language }) => {
       includeHelper ? `+ Helper: ₹${Math.round(helperDaily)}/day` : ''
     })`;
   } else if (calculationMode === 'sqft') {
-    // Sq.ft calculation (approx rate: ₹35-₹180/sqft depending on trade)
-    let ratePerSqFt = 45;
-    if (trade === 'carpentry') ratePerSqFt = 160;
-    if (trade === 'masonry') ratePerSqFt = 38;
-    if (trade === 'painting') ratePerSqFt = 18;
+    // Sq.ft calculation for craft / artisan works
+    let ratePerSqFt = 75;
+    if (trade === 'handloom') ratePerSqFt = 95;
     if (trade === 'stonecraft') ratePerSqFt = 220;
+    if (trade === 'artist') ratePerSqFt = 150;
+    if (trade === 'metalwork') ratePerSqFt = 180;
+    if (trade === 'leathercraft') ratePerSqFt = 130;
+    if (trade === 'tailoring') ratePerSqFt = 60;
+    if (trade === 'pottery') ratePerSqFt = 50;
 
     const adjustedRate = ratePerSqFt * tierMultiplier;
     totalEstimate = Math.round(adjustedRate * workUnits);
-    breakdownDesc = `${workUnits} sq.ft × ₹${Math.round(adjustedRate)}/sq.ft standard benchmark`;
+    breakdownDesc = `${workUnits} sq.ft / meter × ₹${Math.round(adjustedRate)} standard benchmark`;
   } else {
-    // Electrical / plumbing points (approx ₹120-₹350/point)
-    let ratePerPoint = 130;
-    if (trade === 'electrical') ratePerPoint = 120;
-    if (trade === 'plumbing') ratePerPoint = 320;
+    // Per Piece / Craft point (e.g. ₹150 - ₹650/piece)
+    let ratePerPoint = 250;
+    if (trade === 'handloom') ratePerPoint = 350;
+    if (trade === 'pottery') ratePerPoint = 180;
+    if (trade === 'artist') ratePerPoint = 650;
+    if (trade === 'metalwork') ratePerPoint = 420;
+    if (trade === 'leathercraft') ratePerPoint = 380;
+    if (trade === 'tailoring') ratePerPoint = 220;
+    if (trade === 'stonecraft') ratePerPoint = 550;
 
     const adjustedRate = ratePerPoint * tierMultiplier;
     totalEstimate = Math.round(adjustedRate * workUnits);
-    breakdownDesc = `${workUnits} points/fixtures × ₹${Math.round(adjustedRate)}/point standard benchmark`;
+    breakdownDesc = `${workUnits} finished pieces/units × ₹${Math.round(adjustedRate)}/unit standard benchmark`;
   }
 
   return (

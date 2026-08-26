@@ -45,8 +45,8 @@ export function ArtisanHomeHub({
   const newOrdersCount = orders.filter((o) => o.status === 'new').length;
   const recentProducts = products.slice(0, 4);
 
-  // Compute total sales from orders or fallback to profile total
-  const totalSales = orders.reduce((sum, o) => sum + (o.status !== 'cancelled' ? o.totalAmount : 0), 0) || artisanProfile.salesTotal;
+  // Compute total sales strictly from active (non-cancelled) orders
+  const totalSales = orders.reduce((sum, o) => sum + (o.status !== 'cancelled' ? o.totalAmount : 0), 0);
 
   return (
     <div className="w-full max-w-lg mx-auto pb-24 px-4 pt-3 space-y-6">
@@ -100,7 +100,7 @@ export function ArtisanHomeHub({
           className="bg-white hover:bg-stone-50/90 rounded-2xl p-3 sm:p-3.5 border border-stone-200/80 shadow-xs text-center transition-all flex flex-col justify-center items-center"
         >
           <span className="text-xl sm:text-2xl font-extrabold text-stone-900 leading-tight">
-            {newOrdersCount || 3}
+            {newOrdersCount}
           </span>
           <span className="text-[11px] font-semibold text-stone-500 mt-1 leading-tight">
             New<br />Orders
@@ -201,41 +201,52 @@ export function ArtisanHomeHub({
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          {recentProducts.map((product) => (
-            <div
-              key={product.id}
-              onClick={onNavigateToProducts}
-              className="bg-white rounded-2xl overflow-hidden border border-stone-200 shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col group"
-            >
-              <div className="relative h-32 bg-stone-100 overflow-hidden">
-                <img
-                  src={product.images[0] || product.aiEnhancedImage}
-                  alt={product.name}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                />
-                <span
-                  className={`absolute top-2 right-2 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
-                    product.status === 'published'
-                      ? 'bg-[#1D5C4A] text-white'
-                      : 'bg-stone-800/80 text-white'
-                  }`}
-                >
-                  {product.status === 'published' ? 'PUBLISHED' : 'DRAFT'}
-                </span>
-              </div>
+        {recentProducts.length > 0 ? (
+          <div className="grid grid-cols-2 gap-3">
+            {recentProducts.map((product) => (
+              <div
+                key={product.id}
+                onClick={onNavigateToProducts}
+                className="bg-white rounded-2xl overflow-hidden border border-stone-200 shadow-xs hover:shadow-md transition-all cursor-pointer flex flex-col group"
+              >
+                <div className="relative h-32 bg-stone-100 overflow-hidden">
+                  <img
+                    src={product.images[0] || product.aiEnhancedImage}
+                    alt={product.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                  <span
+                    className={`absolute top-2 right-2 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                      product.status === 'published'
+                        ? 'bg-[#1D5C4A] text-white'
+                        : 'bg-stone-800/80 text-white'
+                    }`}
+                  >
+                    {product.status === 'published' ? 'PUBLISHED' : 'DRAFT'}
+                  </span>
+                </div>
 
-              <div className="p-3 flex-1 flex flex-col justify-between">
-                <h4 className="font-bold text-stone-900 text-xs sm:text-sm line-clamp-1">
-                  {product.name}
-                </h4>
-                <div className="text-sm font-extrabold text-stone-900 mt-1">
-                  ₹{product.price.toLocaleString('en-IN')}
+                <div className="p-3 flex-1 flex flex-col justify-between">
+                  <h4 className="font-bold text-stone-900 text-xs sm:text-sm line-clamp-1">
+                    {product.name}
+                  </h4>
+                  <div className="text-sm font-extrabold text-stone-900 mt-1">
+                    ₹{product.price.toLocaleString('en-IN')}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div
+            onClick={onOpenAddProduct}
+            className="p-6 rounded-2xl bg-white border border-dashed border-stone-300 text-center cursor-pointer hover:border-[#963E20] transition-colors space-y-2"
+          >
+            <Package className="w-8 h-8 text-stone-400 mx-auto" />
+            <p className="text-xs font-bold text-stone-700">No products published yet</p>
+            <p className="text-[11px] text-stone-500">Click to list your first craft item with AI Studio</p>
+          </div>
+        )}
       </div>
 
     </div>

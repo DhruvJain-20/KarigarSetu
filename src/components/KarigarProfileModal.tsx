@@ -43,7 +43,7 @@ export const KarigarProfileModal: React.FC<KarigarProfileModalProps> = ({
   onSubmitBooking,
 }) => {
   const t = TRANSLATIONS[language];
-  const meta = TRADE_META[karigar.trade] || TRADE_META.carpentry;
+  const meta = TRADE_META[karigar.trade] || TRADE_META.handloom;
 
   const [activePhoto, setActivePhoto] = useState<string>(
     karigar.portfolioImages?.[0] || karigar.avatarUrl

@@ -93,7 +93,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
           {bookings.map((b) => {
             const badge = getStatusBadge(b.status);
             const BadgeIcon = badge.icon;
-            const meta = TRADE_META[b.karigarTrade] || TRADE_META.carpentry;
+            const meta = TRADE_META[b.karigarTrade] || TRADE_META.handloom;
 
             return (
               <div

@@ -27,7 +27,7 @@ export const PostJobModal: React.FC<PostJobModalProps> = ({
   const t = TRANSLATIONS[language];
 
   const [title, setTitle] = useState('');
-  const [trade, setTrade] = useState<TradeCategory>('carpentry');
+  const [trade, setTrade] = useState<TradeCategory>('handloom');
   const [description, setDescription] = useState('');
   const [city, setCity] = useState('Jaipur');
   const [locality, setLocality] = useState('');

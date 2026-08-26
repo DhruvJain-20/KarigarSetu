@@ -81,6 +81,7 @@ import { MarketplaceStorefront } from './components/MarketplaceStorefront';
 import { VoiceAssistantModal } from './components/VoiceAssistantModal';
 import { AuthPage } from './components/AuthPage';
 import { supabase } from './supabaseClient';
+import { supabaseService } from './services/supabaseService';
 import { safeGetItem, safeSetItem } from './utils/safeStorage';
 
 const INITIAL_BOOKINGS: BookingRequest[] = [
@@ -88,26 +89,26 @@ const INITIAL_BOOKINGS: BookingRequest[] = [
     id: 'bk-1',
     karigarId: 'k-1',
     karigarName: 'Rameshwar Sharma',
-    karigarTrade: 'carpentry',
+    karigarTrade: 'handloom',
     clientName: 'Sanjay Chawla',
     clientPhone: '+91 98290 11223',
     clientAddress: 'C-44, Vaishali Nagar, Jaipur',
     serviceDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
-    jobDescription: 'Modular wardrobe installation and hydraulic kitchen fitting checkup.',
+    jobDescription: 'Custom handloom textile weaving and silk curtain tailoring.',
     estimatedBudget: 4500,
     status: 'accepted',
     createdAt: new Date().toISOString(),
   },
   {
     id: 'bk-2',
-    karigarId: 'k-4',
-    karigarName: 'Balwinder Singh',
-    karigarTrade: 'electrical',
+    karigarId: 'k-3',
+    karigarName: 'Suresh Kumar Prajapati',
+    karigarTrade: 'pottery',
     clientName: 'Rajeev Singhal',
     clientPhone: '+91 98100 44556',
     clientAddress: 'Tower B, Sector 62, Noida',
     serviceDate: new Date(Date.now() + 172800000).toISOString().split('T')[0],
-    jobDescription: '3-phase distribution panel rewire and inverter connection.',
+    jobDescription: 'Custom terracotta planter pottery craft for heritage home.',
     estimatedBudget: 2500,
     status: 'pending',
     createdAt: new Date(Date.now() - 3600000 * 3).toISOString(),
@@ -211,10 +212,23 @@ export default function App() {
         avatarUrl: profileData.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(profileData.full_name || 'User')}&backgroundColor=963e20,1d5c4a`,
         businessDetails: {
           ...prev.businessDetails,
-          businessName: profileData.business_name || `${profileData.full_name}'s Handcraft Workshop`,
+          businessName: profileData.business_name || '',
+          workshopAddress: profileData.workshop_address || '',
+          city: profileData.city || '',
+          state: profileData.state || '',
+          phone: profileData.phone || '',
           email: profileData.email || user.email || '',
-          phone: profileData.phone || prev.businessDetails.phone,
+          udyamRegNo: profileData.udyam_reg_no || '',
+          aboutStory: profileData.about_story || '',
         },
+        bankDetails: {
+          ...prev.bankDetails,
+          upiId: profileData.upi_id || '',
+          bankName: profileData.bank_name || '',
+          accountNumber: profileData.account_number || '',
+          accountHolder: profileData.account_holder || profileData.full_name || '',
+          ifscCode: profileData.ifsc_code || '',
+        }
       }));
 
       // Role-based screen selection
@@ -227,8 +241,48 @@ export default function App() {
         setAppMode('artisan_hub');
         setArtisanTab('home');
       }
+
+      // Load products, orders, bookings, jobs, and karigars from Supabase
+      loadAppDataFromSupabase(user.id);
     } catch (err) {
       console.error('Error loading user profile:', err);
+    }
+  };
+
+  // Hydrate application state from Supabase tables
+  const loadAppDataFromSupabase = async (userId: string) => {
+    try {
+      // 1. Fetch Products
+      const dbProducts = await supabaseService.fetchProducts();
+      if (dbProducts && dbProducts.length > 0) {
+        setProducts(dbProducts);
+      }
+
+      // 2. Fetch Orders
+      const dbOrders = await supabaseService.fetchOrders(userId);
+      if (dbOrders && dbOrders.length > 0) {
+        setOrders(dbOrders);
+      }
+
+      // 3. Fetch Bookings
+      const dbBookings = await supabaseService.fetchBookings();
+      if (dbBookings && dbBookings.length > 0) {
+        setBookings(dbBookings);
+      }
+
+      // 4. Fetch Job Posts
+      const dbJobs = await supabaseService.fetchJobPosts();
+      if (dbJobs && dbJobs.length > 0) {
+        setJobs(dbJobs);
+      }
+
+      // 5. Fetch Karigars
+      const dbKarigars = await supabaseService.fetchKarigars();
+      if (dbKarigars && dbKarigars.length > 0) {
+        setKarigars(dbKarigars);
+      }
+    } catch (err) {
+      console.warn('Notice loading Supabase datasets:', err);
     }
   };
 
@@ -368,64 +422,144 @@ export default function App() {
     );
   });
 
+  // Identify current logged-in user / artisan ID
+  const currentUserId = authUser?.id || artisanProfile.id;
+
+  // Filter products that belong exclusively to this artisan's account for their Artisan Hub & Catalog
+  const myArtisanProducts = products.filter(
+    (p) => p.artisanId === currentUserId || (authUser?.id && p.artisanId === authUser.id)
+  );
+
+  // Filter orders that belong exclusively to this artisan's products
+  const myArtisanOrders = orders.filter(
+    (o) => o.artisanId === currentUserId || (authUser?.id && o.artisanId === authUser.id)
+  );
+
   // Handlers for Products & Orders
-  const handleProductCreated = (newProduct: ReadyProduct) => {
-    setProducts([newProduct, ...products]);
+  const handleProductCreated = async (newProduct: ReadyProduct) => {
+    const finalProduct: ReadyProduct = {
+      ...newProduct,
+      artisanId: authUser?.id || artisanProfile.id,
+      artisanName: artisanProfile.name || newProduct.artisanName,
+      artisanCity: artisanProfile.businessDetails?.city || newProduct.artisanCity,
+      artisanAvatar: artisanProfile.avatarUrl || newProduct.artisanAvatar,
+    };
+
+    setProducts([finalProduct, ...products]);
     setArtisanProfile((prev) => ({
       ...prev,
       productsListedCount: prev.productsListedCount + 1,
     }));
     showToast(
       language === 'hi'
-        ? `बधाई! '${newProduct.name}' सफलता से प्रकाशित हुआ!`
-        : `Congratulations! '${newProduct.name}' is now live in the catalog!`
+        ? `बधाई! '${finalProduct.name}' सफलता से प्रकाशित हुआ!`
+        : `Congratulations! '${finalProduct.name}' is now live in your catalog!`
     );
     setAppMode('artisan_hub');
     setArtisanTab('products');
+
+    // Persist to Supabase
+    await supabaseService.createProduct(finalProduct, authUser?.id);
   };
 
-  const handleProductOrdered = (newOrder: ProductOrder) => {
+  const handleProductOrdered = async (newOrder: ProductOrder) => {
     setOrders([newOrder, ...orders]);
-    setArtisanProfile((prev) => ({
-      ...prev,
-      salesTotal: prev.salesTotal + newOrder.totalAmount,
-      activeOrdersCount: prev.activeOrdersCount + 1,
-    }));
+    
+    // Decrement stock for the ordered product and mark as sold_out if 0
+    let updatedProductStock = 0;
+    let updatedProductStatus: 'published' | 'sold_out' = 'published';
+
+    setProducts((prevProducts) =>
+      prevProducts.map((p) => {
+        if (p.id === newOrder.productId) {
+          const newStock = Math.max(0, p.stock - newOrder.quantity);
+          const newStatus: 'published' | 'sold_out' = newStock === 0 ? 'sold_out' : p.status;
+          updatedProductStock = newStock;
+          updatedProductStatus = newStatus;
+          return { ...p, stock: newStock, status: newStatus };
+        }
+        return p;
+      })
+    );
+
+    if (newOrder.artisanId === currentUserId) {
+      setArtisanProfile((prev) => ({
+        ...prev,
+        salesTotal: prev.salesTotal + newOrder.totalAmount,
+        activeOrdersCount: prev.activeOrdersCount + 1,
+      }));
+    }
+
     showToast(
       language === 'hi'
         ? `ऑर्डर सफलतापूर्वक दर्ज हुआ! कारीगर को सूचना भेज दी गई है।`
-        : `Order placed successfully! Artisan notified for packaging.`
+        : `Order placed successfully! Stock updated and artisan notified.`
     );
+
+    // Persist to Supabase
+    await supabaseService.createOrder(newOrder, authUser?.id);
+
+    // Update stock in Supabase
+    if (newOrder.productId) {
+      await supabaseService.updateProductStock(newOrder.productId, updatedProductStock, updatedProductStatus);
+    }
   };
 
-  const handleUpdateOrderStatus = (orderId: string, newStatus: ProductOrder['status']) => {
+  const handleUpdateProductStock = async (productId: string, newStock: number) => {
+    const newStatus: 'published' | 'sold_out' = newStock > 0 ? 'published' : 'sold_out';
+    setProducts((prev) =>
+      prev.map((p) => (p.id === productId ? { ...p, stock: newStock, status: newStatus } : p))
+    );
+    showToast(
+      newStock > 0
+        ? `Stock updated to ${newStock} units. Product is now available in Shop Crafts!`
+        : `Product marked as Out of Stock.`
+    );
+
+    // Persist stock update in Supabase
+    await supabaseService.updateProductStock(productId, newStock, newStatus);
+  };
+
+  const handleUpdateOrderStatus = async (orderId: string, newStatus: ProductOrder['status']) => {
     setOrders(
       orders.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
     );
     showToast(`Order status updated to ${newStatus.toUpperCase()}`);
+
+    // Persist to Supabase
+    await supabaseService.updateOrderStatus(orderId, newStatus);
   };
 
-  const handleDeleteProduct = (productId: string) => {
+  const handleDeleteProduct = async (productId: string) => {
     setProducts(products.filter((p) => p.id !== productId));
     showToast('Product removed from catalog');
+
+    // Persist to Supabase
+    await supabaseService.deleteProduct(productId);
   };
 
-  const handleCancelOrder = (orderId: string) => {
+  const handleCancelOrder = async (orderId: string) => {
     setOrders(
       orders.map((o) => (o.id === orderId ? { ...o, status: 'cancelled' } : o))
     );
     showToast('Order has been cancelled');
+
+    // Persist to Supabase
+    await supabaseService.updateOrderStatus(orderId, 'cancelled');
   };
 
   // Handlers for Hire & Jobs
-  const handleJobPosted = (newJob: JobPost) => {
+  const handleJobPosted = async (newJob: JobPost) => {
     setJobs([newJob, ...jobs]);
     showToast(language === 'hi' ? 'काम की आवश्यकता सफलतापूर्वक पोस्ट हुई!' : 'Work requirement posted successfully!');
     setAppMode('hire_services');
     setHireServicesTab('jobs');
+
+    // Persist to Supabase
+    await supabaseService.createJobPost(newJob, authUser?.id);
   };
 
-  const handleKarigarRegistered = (newKarigar: Karigar) => {
+  const handleKarigarRegistered = async (newKarigar: Karigar) => {
     setKarigars([newKarigar, ...karigars]);
     showToast(
       language === 'hi'
@@ -434,9 +568,12 @@ export default function App() {
     );
     setAppMode('hire_services');
     setHireServicesTab('explore');
+
+    // Persist to Supabase
+    await supabaseService.registerKarigar(newKarigar, authUser?.id);
   };
 
-  const handleBookingCreated = (bookingData: {
+  const handleBookingCreated = async (bookingData: {
     karigarId: string;
     karigarName: string;
     karigarTrade: Karigar['trade'];
@@ -455,18 +592,27 @@ export default function App() {
     };
     setBookings([newBooking, ...bookings]);
     showToast(language === 'hi' ? 'बुकिंग अनुरोध कारीगर को भेजा गया!' : 'Booking request sent to artisan!');
+
+    // Persist to Supabase
+    await supabaseService.createBooking(newBooking, authUser?.id);
   };
 
-  const handleUpdateBookingStatus = (id: string, status: BookingRequest['status']) => {
+  const handleUpdateBookingStatus = async (id: string, status: BookingRequest['status']) => {
     setBookings(bookings.map((b) => (b.id === id ? { ...b, status } : b)));
     showToast(`Booking status updated to ${status}`);
+
+    // Persist to Supabase
+    await supabaseService.updateBookingStatus(id, status);
   };
 
-  const handleApplyToJob = (job: JobPost) => {
+  const handleApplyToJob = async (job: JobPost) => {
     setJobs(
       jobs.map((j) => (j.id === job.id ? { ...j, applicantsCount: j.applicantsCount + 1 } : j))
     );
     showToast(language === 'hi' ? 'आवेदन भेजा गया! नियोक्ता आपसे संपर्क करेंगे।' : 'Proposal submitted! Client has been notified.');
+
+    // Persist to Supabase
+    await supabaseService.incrementJobApplicants(job.id, job.applicantsCount);
   };
 
   // Auth Loading Splash Screen
@@ -683,8 +829,8 @@ export default function App() {
               <ArtisanHomeHub
                 language={language}
                 artisanProfile={artisanProfile}
-                products={products}
-                orders={orders}
+                products={myArtisanProducts}
+                orders={myArtisanOrders}
                 onOpenAddProduct={() => setIsAddProductOpen(true)}
                 onNavigateToProducts={() => setArtisanTab('products')}
                 onNavigateToOrders={() => setArtisanTab('orders')}
@@ -697,9 +843,10 @@ export default function App() {
             {artisanTab === 'products' && (
               <ProductsCatalogView
                 language={language}
-                products={products}
+                products={myArtisanProducts}
                 onOpenAddProduct={() => setIsAddProductOpen(true)}
                 onDeleteProduct={handleDeleteProduct}
+                onUpdateStock={handleUpdateProductStock}
                 onViewAsBuyer={(prod) => {
                   setAppMode('marketplace');
                 }}
@@ -709,7 +856,7 @@ export default function App() {
             {artisanTab === 'orders' && (
               <OrdersManagementView
                 language={language}
-                orders={orders}
+                orders={myArtisanOrders}
                 onUpdateOrderStatus={handleUpdateOrderStatus}
               />
             )}
@@ -731,7 +878,13 @@ export default function App() {
                         workshop_address: updated.businessDetails.workshopAddress,
                         city: updated.businessDetails.city,
                         state: updated.businessDetails.state,
+                        udyam_reg_no: updated.businessDetails.udyamRegNo,
+                        about_story: updated.businessDetails.aboutStory,
                         upi_id: updated.bankDetails.upiId,
+                        bank_name: updated.bankDetails.bankName,
+                        account_number: updated.bankDetails.accountNumber,
+                        account_holder: updated.bankDetails.accountHolder,
+                        ifsc_code: updated.bankDetails.ifscCode,
                         avatar_url: updated.avatarUrl,
                       })
                       .eq('id', authUser.id);
@@ -981,9 +1134,9 @@ export default function App() {
                 <ShoppingBag className="w-5 h-5 stroke-[2]" />
               </div>
               <span className="text-[10px] font-bold">Orders</span>
-              {orders.filter((o) => o.status === 'new').length > 0 && (
+              {myArtisanOrders.filter((o) => o.status === 'new').length > 0 && (
                 <span className="absolute top-0 right-1 w-4 h-4 rounded-full bg-[#963E20] text-white text-[9px] font-bold flex items-center justify-center">
-                  {orders.filter((o) => o.status === 'new').length}
+                  {myArtisanOrders.filter((o) => o.status === 'new').length}
                 </span>
               )}
             </button>
@@ -1019,6 +1172,7 @@ export default function App() {
           language={language}
           onClose={() => setIsAddProductOpen(false)}
           onProductCreated={handleProductCreated}
+          artisanProfile={artisanProfile}
         />
       )}
 

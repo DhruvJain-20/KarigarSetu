@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Search,
   Filter,
@@ -19,13 +19,15 @@ import {
   ChevronRight,
   Info
 } from 'lucide-react';
-import { ReadyProduct, ProductOrder, Language } from '../types';
+import { ReadyProduct, ProductOrder, Language, UserProfile } from '../types';
 import { BuyerPurchasesView } from './BuyerPurchasesView';
 
 interface MarketplaceStorefrontProps {
   language: Language;
   products: ReadyProduct[];
   orders: ProductOrder[];
+  currentUserProfile?: UserProfile | null;
+  authUser?: any;
   onProductOrdered: (order: ProductOrder) => void;
   onCancelOrder?: (orderId: string) => void;
   onSwitchToArtisan: () => void;
@@ -46,6 +48,8 @@ export function MarketplaceStorefront({
   language,
   products,
   orders,
+  currentUserProfile,
+  authUser,
   onProductOrdered,
   onCancelOrder,
   onSwitchToArtisan,
@@ -58,21 +62,61 @@ export function MarketplaceStorefront({
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState<ProductOrder | null>(null);
 
-  // Active delivery count
-  const activeDeliveryCount = orders.filter(
-    (o) => o.status === 'shipped' || o.status === 'processing' || o.status === 'new'
-  ).length;
+  // Derive dynamic buyer default information from current logged in profile
+  const defaultBuyerName =
+    currentUserProfile?.full_name ||
+    authUser?.user_metadata?.full_name ||
+    authUser?.user_metadata?.name ||
+    (authUser?.email ? authUser.email.split('@')[0] : '') ||
+    '';
+
+  const defaultBuyerPhone = currentUserProfile?.phone || '';
+  const defaultBuyerAddress =
+    currentUserProfile?.workshop_address ||
+    (currentUserProfile?.city
+      ? `${currentUserProfile.city}${currentUserProfile.state ? `, ${currentUserProfile.state}` : ''}`
+      : '') ||
+    '';
 
   // Checkout form state
-  const [buyerName, setBuyerName] = useState('Pooja Malhotra');
-  const [buyerPhone, setBuyerPhone] = useState('+91 98100 88776');
-  const [buyerAddress, setBuyerAddress] = useState('Flat 502, Prestige Tower, Sector 54, Gurugram, Haryana - 122002');
+  const [buyerName, setBuyerName] = useState(defaultBuyerName);
+  const [buyerPhone, setBuyerPhone] = useState(defaultBuyerPhone);
+  const [buyerAddress, setBuyerAddress] = useState(defaultBuyerAddress);
   const [quantity, setQuantity] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState<'UPI' | 'Cash on Delivery' | 'Card'>('UPI');
 
-  const publishedProducts = products.filter((p) => p.status === 'published');
+  // Synchronize buyer fields when checkout modal opens
+  useEffect(() => {
+    if (isCheckoutOpen) {
+      if (!buyerName && defaultBuyerName) setBuyerName(defaultBuyerName);
+      if (!buyerPhone && defaultBuyerPhone) setBuyerPhone(defaultBuyerPhone);
+      if (!buyerAddress && defaultBuyerAddress) setBuyerAddress(defaultBuyerAddress);
+    }
+  }, [isCheckoutOpen, defaultBuyerName, defaultBuyerPhone, defaultBuyerAddress]);
 
-  const filteredProducts = publishedProducts.filter((p) => {
+  // Filter purchases for the current buyer
+  const myBuyerOrders = orders.filter((o) => {
+    if (currentUserProfile?.id && o.buyerUserId === currentUserProfile.id) return true;
+    if (authUser?.id && o.buyerUserId === authUser.id) return true;
+    if (
+      currentUserProfile?.full_name &&
+      o.buyerName.trim().toLowerCase() === currentUserProfile.full_name.trim().toLowerCase()
+    ) {
+      return true;
+    }
+    // For single session direct purchase fallback
+    if (!o.buyerUserId && !['ord-101', 'ord-102', 'ord-103', 'ord-104'].includes(o.id)) {
+      return true;
+    }
+    return false;
+  });
+
+  // Active delivery count for the buyer
+  const activeDeliveryCount = myBuyerOrders.filter(
+    (o) => o.status === 'shipped' || o.status === 'processing' || o.status === 'new'
+  ).length;
+
+  const filteredProducts = products.filter((p) => {
     const matchesCategory =
       selectedCategory === 'All' || p.category.toLowerCase().includes(selectedCategory.toLowerCase());
     const matchesSearch =
@@ -86,8 +130,17 @@ export function MarketplaceStorefront({
   const handlePlaceOrder = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedProductForBuy) return;
+    if (selectedProductForBuy.stock <= 0 || selectedProductForBuy.status === 'sold_out') {
+      alert('This product is currently out of stock.');
+      return;
+    }
 
-    const total = selectedProductForBuy.price * quantity;
+    const orderQty = Math.min(quantity, selectedProductForBuy.stock);
+    const total = selectedProductForBuy.price * orderQty;
+    const finalBuyerName = buyerName.trim() || defaultBuyerName || 'Customer';
+    const finalBuyerPhone = buyerPhone.trim() || '+91 98000 00000';
+    const finalBuyerAddress = buyerAddress.trim() || 'India';
+
     const newOrder: ProductOrder = {
       id: `ord-${Date.now()}`,
       orderNumber: `KS-ORD-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -96,11 +149,12 @@ export function MarketplaceStorefront({
       productImage: selectedProductForBuy.images[0] || selectedProductForBuy.aiEnhancedImage || '',
       artisanId: selectedProductForBuy.artisanId,
       artisanName: selectedProductForBuy.artisanName,
-      buyerName: buyerName.trim() || 'Direct Customer',
-      buyerPhone: buyerPhone.trim() || '+91 98000 00000',
-      buyerAddress: buyerAddress.trim() || 'India',
+      buyerUserId: authUser?.id || currentUserProfile?.id,
+      buyerName: finalBuyerName,
+      buyerPhone: finalBuyerPhone,
+      buyerAddress: finalBuyerAddress,
       buyerType: 'Direct Consumer',
-      quantity,
+      quantity: orderQty,
       unitPrice: selectedProductForBuy.price,
       totalAmount: total,
       status: 'new',
@@ -136,7 +190,7 @@ export function MarketplaceStorefront({
             <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
               storeTab === 'browse' ? 'bg-white/20 text-white' : 'bg-stone-200 text-stone-700'
             }`}>
-              {publishedProducts.length}
+              {products.length}
             </span>
           </button>
 
@@ -159,7 +213,7 @@ export function MarketplaceStorefront({
               </span>
             ) : (
               <span className="text-[11px] px-1.5 py-0.2 bg-stone-200 text-stone-700 rounded-full">
-                {orders.length}
+                {myBuyerOrders.length}
               </span>
             )}
           </button>
@@ -179,7 +233,7 @@ export function MarketplaceStorefront({
       {storeTab === 'purchases' ? (
         <BuyerPurchasesView
           language={language}
-          orders={orders}
+          orders={myBuyerOrders}
           onBrowseMarketplace={() => setStoreTab('browse')}
           onCancelOrder={onCancelOrder}
         />
@@ -267,10 +321,16 @@ export function MarketplaceStorefront({
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
                   <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
-                    <span className="px-2.5 py-0.5 rounded-full bg-[#1D5C4A]/90 backdrop-blur text-white text-[11px] font-semibold flex items-center gap-1 shadow-xs">
-                      <CheckCircle2 className="w-3 h-3" />
-                      Handmade
-                    </span>
+                    {product.stock <= 0 || product.status === 'sold_out' ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-red-600/90 backdrop-blur text-white text-[11px] font-bold flex items-center gap-1 shadow-xs">
+                        Out of Stock
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full bg-[#1D5C4A]/90 backdrop-blur text-white text-[11px] font-semibold flex items-center gap-1 shadow-xs">
+                        <CheckCircle2 className="w-3 h-3" />
+                        Handmade
+                      </span>
+                    )}
                     <span className="px-2.5 py-0.5 rounded-full bg-amber-900/80 backdrop-blur text-white text-[11px] font-semibold">
                       {product.category}
                     </span>
@@ -326,23 +386,39 @@ export function MarketplaceStorefront({
                           </span>
                         )}
                       </div>
-                      <div className="text-[10px] text-[#1D5C4A] font-semibold flex items-center gap-1">
-                        <Truck className="w-3 h-3" />
-                        Free Direct Delivery
-                      </div>
+                      {product.stock <= 0 || product.status === 'sold_out' ? (
+                        <div className="text-[10px] text-red-600 font-bold flex items-center gap-1">
+                          Sold Out • No stock left
+                        </div>
+                      ) : (
+                        <div className="text-[10px] text-[#1D5C4A] font-semibold flex items-center gap-1">
+                          <Truck className="w-3 h-3" />
+                          {product.stock <= 3 ? `Only ${product.stock} units left!` : 'Free Direct Delivery'}
+                        </div>
+                      )}
                     </div>
 
-                    <button
-                      onClick={() => {
-                        setSelectedProductForBuy(product);
-                        setQuantity(1);
-                        setIsCheckoutOpen(true);
-                      }}
-                      className="px-4 py-2.5 rounded-xl bg-[#963E20] hover:bg-[#80341A] text-white font-bold text-xs shadow-xs flex items-center gap-1.5 transition-transform active:scale-95"
-                    >
-                      <ShoppingBag className="w-3.5 h-3.5" />
-                      <span>Buy Now</span>
-                    </button>
+                    {product.stock <= 0 || product.status === 'sold_out' ? (
+                      <button
+                        disabled
+                        type="button"
+                        className="px-4 py-2.5 rounded-xl bg-stone-200 text-stone-500 font-bold text-xs cursor-not-allowed flex items-center gap-1.5 opacity-80"
+                      >
+                        <span>Out of Stock</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setSelectedProductForBuy(product);
+                          setQuantity(1);
+                          setIsCheckoutOpen(true);
+                        }}
+                        className="px-4 py-2.5 rounded-xl bg-[#963E20] hover:bg-[#80341A] text-white font-bold text-xs shadow-xs flex items-center gap-1.5 transition-transform active:scale-95"
+                      >
+                        <ShoppingBag className="w-3.5 h-3.5" />
+                        <span>Buy Now</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -399,6 +475,7 @@ export function MarketplaceStorefront({
                 <input
                   type="text"
                   required
+                  placeholder="Enter your full name"
                   value={buyerName}
                   onChange={(e) => setBuyerName(e.target.value)}
                   className="w-full p-3 rounded-xl border border-stone-300 font-medium focus:outline-none focus:border-[#963E20]"
@@ -411,6 +488,7 @@ export function MarketplaceStorefront({
                   <input
                     type="tel"
                     required
+                    placeholder="e.g. +91 98765 43210"
                     value={buyerPhone}
                     onChange={(e) => setBuyerPhone(e.target.value)}
                     className="w-full p-3 rounded-xl border border-stone-300 font-medium focus:outline-none focus:border-[#963E20]"
@@ -418,7 +496,12 @@ export function MarketplaceStorefront({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-bold text-stone-700">Quantity</label>
+                  <div className="flex justify-between items-center">
+                    <label className="font-bold text-stone-700">Quantity</label>
+                    <span className="text-[11px] text-[#1D5C4A] font-semibold">
+                      (Available: {selectedProductForBuy.stock} units)
+                    </span>
+                  </div>
                   <div className="flex items-center border border-stone-300 rounded-xl overflow-hidden">
                     <button
                       type="button"
@@ -430,8 +513,9 @@ export function MarketplaceStorefront({
                     <div className="flex-1 text-center font-bold text-sm">{quantity}</div>
                     <button
                       type="button"
-                      onClick={() => setQuantity(quantity + 1)}
-                      className="px-4 py-3 bg-stone-100 font-bold hover:bg-stone-200"
+                      disabled={quantity >= selectedProductForBuy.stock}
+                      onClick={() => setQuantity(Math.min(selectedProductForBuy.stock, quantity + 1))}
+                      className="px-4 py-3 bg-stone-100 font-bold hover:bg-stone-200 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       +
                     </button>
@@ -444,6 +528,7 @@ export function MarketplaceStorefront({
                 <textarea
                   required
                   rows={2}
+                  placeholder="Complete street address, apartment, city, state and PIN code"
                   value={buyerAddress}
                   onChange={(e) => setBuyerAddress(e.target.value)}
                   className="w-full p-3 rounded-xl border border-stone-300 font-medium focus:outline-none focus:border-[#963E20] resize-none"

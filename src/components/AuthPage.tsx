@@ -506,64 +506,6 @@ export function AuthPage({ language, onToggleLanguage, onAuthSuccess }: AuthPage
           {/* SIGN UP FORM */}
           {authMode === 'signup' && (
             <div className="space-y-4">
-              {/* User Type Selection */}
-              <div>
-                <label className="block text-xs font-bold text-stone-700 mb-2">
-                  {language === 'hi' ? 'आपकी भूमिका (User Type)' : 'Select Your Account Type'}
-                </label>
-                <div className="grid grid-cols-2 gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setRole('artisan')}
-                    className={`p-3 rounded-2xl border text-left flex flex-col gap-1 transition-all ${
-                      role === 'artisan'
-                        ? 'border-[#963E20] bg-amber-50/70 ring-1 ring-[#963E20]'
-                        : 'border-stone-200 hover:bg-stone-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="w-7 h-7 rounded-xl bg-amber-100 text-[#963E20] flex items-center justify-center">
-                        <Wrench className="w-3.5 h-3.5" />
-                      </div>
-                      {role === 'artisan' && (
-                        <CheckCircle2 className="w-4 h-4 text-[#963E20]" />
-                      )}
-                    </div>
-                    <div className="font-bold text-xs text-stone-900">
-                      {language === 'hi' ? 'कारीगर / शिल्पकार' : 'Artisan / Maker'}
-                    </div>
-                    <div className="text-[10px] text-stone-500 line-clamp-1">
-                      {language === 'hi' ? 'हस्तशिल्प बेचें' : 'Sell crafts & services'}
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setRole('buyer')}
-                    className={`p-3 rounded-2xl border text-left flex flex-col gap-1 transition-all ${
-                      role === 'buyer'
-                        ? 'border-[#1D5C4A] bg-emerald-50/70 ring-1 ring-[#1D5C4A]'
-                        : 'border-stone-200 hover:bg-stone-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="w-7 h-7 rounded-xl bg-emerald-100 text-[#1D5C4A] flex items-center justify-center">
-                        <ShoppingBag className="w-3.5 h-3.5" />
-                      </div>
-                      {role === 'buyer' && (
-                        <CheckCircle2 className="w-4 h-4 text-[#1D5C4A]" />
-                      )}
-                    </div>
-                    <div className="font-bold text-xs text-stone-900">
-                      {language === 'hi' ? 'B2B खरीदार' : 'B2B Buyer / Patron'}
-                    </div>
-                    <div className="text-[10px] text-stone-500 line-clamp-1">
-                      {language === 'hi' ? 'शिल्प खरीदें' : 'Shop & hire direct'}
-                    </div>
-                  </button>
-                </div>
-              </div>
-
               {/* Google OAuth Button for Signup */}
               <button
                 type="button"

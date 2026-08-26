@@ -53,6 +53,7 @@ export function BuyerPurchasesView({
   const [userRating, setUserRating] = useState(5);
   const [userFeedback, setUserFeedback] = useState('');
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
+  const [orderToCancel, setOrderToCancel] = useState<ProductOrder | null>(null);
 
   // Groupings and counts
   const underDeliveryOrders = orders.filter((o) => o.status === 'shipped' || o.status === 'new' || o.status === 'processing');
@@ -479,15 +480,11 @@ export function BuyerPurchasesView({
                     </button>
                   )}
 
-                  {order.status === 'new' && onCancelOrder && (
+                  {(order.status === 'new' || order.status === 'processing') && onCancelOrder && (
                     <button
                       type="button"
-                      onClick={() => {
-                        if (confirm(`Are you sure you want to cancel order #${order.orderNumber}?`)) {
-                          onCancelOrder(order.id);
-                        }
-                      }}
-                      className="px-3 py-2 rounded-xl text-xs font-semibold text-stone-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      onClick={() => setOrderToCancel(order)}
+                      className="px-3.5 py-2.5 rounded-xl text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors cursor-pointer"
                     >
                       Cancel Order
                     </button>
@@ -524,13 +521,77 @@ export function BuyerPurchasesView({
             </div>
             <button
               onClick={onBrowseMarketplace}
-              className="px-6 py-3 rounded-2xl bg-[#963E20] hover:bg-[#80341A] text-white font-bold text-xs sm:text-sm shadow-sm transition-transform active:scale-95"
+              className="px-6 py-3 rounded-2xl bg-[#963E20] hover:bg-[#80341A] text-white font-bold text-xs sm:text-sm shadow-sm transition-transform active:scale-95 cursor-pointer"
             >
               Explore Ready Handcrafted Products
             </button>
           </div>
         )}
       </div>
+
+      {/* CANCEL ORDER CONFIRMATION MODAL */}
+      {orderToCancel && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex justify-center items-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl border border-stone-200 text-center space-y-4 animate-in zoom-in-95">
+            <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="text-lg font-bold text-stone-900">Cancel This Order?</h3>
+              <p className="text-xs text-stone-500">
+                Are you sure you want to cancel order #{orderToCancel.orderNumber}?
+              </p>
+            </div>
+
+            <div className="bg-stone-50 rounded-2xl p-3 text-left flex items-center gap-3 border border-stone-200">
+              <img
+                src={orderToCancel.productImage}
+                alt={orderToCancel.productName}
+                className="w-12 h-12 rounded-xl object-cover"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-xs text-stone-900 truncate">
+                  {orderToCancel.productName}
+                </div>
+                <div className="text-[11px] text-stone-500">
+                  Total: ₹{orderToCancel.totalAmount.toLocaleString('en-IN')} ({orderToCancel.paymentMethod})
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3 bg-amber-50 rounded-xl text-left border border-amber-200/70 text-[11px] text-amber-900 space-y-0.5">
+              <div className="font-bold flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5 text-amber-700" />
+                Instant Cancellation & Refund
+              </div>
+              <p>100% of your paid amount will be refunded back to your original payment method.</p>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setOrderToCancel(null)}
+                className="flex-1 py-3 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs transition-colors cursor-pointer"
+              >
+                Keep Order
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onCancelOrder) {
+                    onCancelOrder(orderToCancel.id);
+                  }
+                  setOrderToCancel(null);
+                }}
+                className="flex-1 py-3 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition-colors shadow-sm cursor-pointer"
+              >
+                Yes, Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* TRACKING MODAL */}
       {selectedOrderForTracking && (

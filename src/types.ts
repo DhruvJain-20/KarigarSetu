@@ -16,20 +16,23 @@ export interface UserProfile {
   state?: string;
   business_name?: string;
   workshop_address?: string;
+  udyam_reg_no?: string;
+  about_story?: string;
   upi_id?: string;
+  bank_name?: string;
+  account_number?: string;
+  account_holder?: string;
+  ifsc_code?: string;
 }
 
 export type TradeCategory =
-  | 'carpentry'
-  | 'electrical'
-  | 'plumbing'
-  | 'masonry'
-  | 'painting'
   | 'handloom'
   | 'pottery'
+  | 'artist'
   | 'metalwork'
   | 'tailoring'
-  | 'stonecraft';
+  | 'stonecraft'
+  | 'leathercraft';
 
 export interface Karigar {
   id: string;
@@ -120,7 +123,7 @@ export interface ReadyProduct {
   artisanAvatar?: string;
   images: string[];
   aiEnhancedImage?: string;
-  status: 'published' | 'draft' | 'sold_out';
+  status: 'published' | 'sold_out';
   stock: number;
   isHandmade: boolean;
   isVerifiedCraft: boolean;
@@ -141,6 +144,7 @@ export interface ProductOrder {
   productImage: string;
   artisanId: string;
   artisanName: string;
+  buyerUserId?: string;
   buyerName: string;
   buyerPhone: string;
   buyerAddress: string;

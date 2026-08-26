@@ -416,6 +416,21 @@ export function OrdersManagementView({
                   Mark Delivered
                 </button>
               </div>
+
+              {selectedOrderForDetails.status !== 'cancelled' && selectedOrderForDetails.status !== 'delivered' && (
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onUpdateOrderStatus(selectedOrderForDetails.id, 'cancelled');
+                      setSelectedOrderForDetails((prev) => prev ? { ...prev, status: 'cancelled' } : null);
+                    }}
+                    className="w-full py-2 px-3 rounded-xl text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors"
+                  >
+                    Cancel / Reject Order
+                  </button>
+                </div>
+              )}
             </div>
 
             <button
