@@ -664,10 +664,10 @@ export default function App() {
         </div>
       )}
 
-      {/* Top Header Bar matching Screenshots */}
-      <header id="main-header" className="bg-white/95 backdrop-blur-md border-b border-amber-900/10 sticky top-0 z-40 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between h-16 gap-3">
+      {/* Top Header Bar fully responsive for mobile and desktop */}
+      <header id="main-header" className="bg-white/95 backdrop-blur-md border-b border-amber-900/10 sticky top-0 z-40 shadow-xs w-full max-w-full">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-2 sm:py-2.5 space-y-2 sm:space-y-0">
+          <div className="flex items-center justify-between gap-2 sm:h-12">
             
             {/* Logo */}
             <div
@@ -675,30 +675,30 @@ export default function App() {
                 setAppMode('artisan_hub');
                 setArtisanTab('home');
               }}
-              className="flex items-center gap-2 cursor-pointer group"
+              className="flex items-center gap-1.5 sm:gap-2 cursor-pointer group shrink-0"
             >
-              <div className="w-9 h-9 rounded-xl bg-[#963E20] flex items-center justify-center text-white shadow-xs">
-                <Hammer className="w-5 h-5 text-amber-200" />
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#963E20] flex items-center justify-center text-white shadow-xs shrink-0">
+                <Hammer className="w-4 h-4 sm:w-5 sm:h-5 text-amber-200" />
               </div>
-              <div>
-                <span className="font-serif font-extrabold text-xl sm:text-2xl text-[#963E20] tracking-tight">
+              <div className="flex items-baseline gap-1">
+                <span className="font-serif font-extrabold text-lg sm:text-2xl text-[#963E20] tracking-tight">
                   KarigarSetu
                 </span>
-                <span className="text-[10px] font-bold text-amber-900 ml-1.5 hidden md:inline">
+                <span className="text-[10px] font-bold text-amber-900 hidden lg:inline">
                   कारीगर सेतु
                 </span>
               </div>
             </div>
 
-            {/* Platform Mode Tabs */}
-            <div className="flex items-center bg-stone-100/90 p-1 rounded-2xl border border-stone-200 text-xs font-bold">
+            {/* Desktop Center Mode Tabs */}
+            <div className="hidden md:flex items-center bg-stone-100/90 p-1 rounded-2xl border border-stone-200 text-xs font-bold">
               <button
                 type="button"
                 onClick={() => {
                   setAppMode('artisan_hub');
                   setArtisanTab('home');
                 }}
-                className={`px-3 py-1.5 rounded-xl transition-all ${
+                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
                   appMode === 'artisan_hub'
                     ? 'bg-[#963E20] text-white shadow-xs'
                     : 'text-stone-700 hover:text-stone-900'
@@ -710,7 +710,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setAppMode('marketplace')}
-                className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
                   appMode === 'marketplace'
                     ? 'bg-[#963E20] text-white shadow-xs'
                     : 'text-stone-700 hover:text-stone-900'
@@ -728,7 +728,7 @@ export default function App() {
                   setAppMode('hire_services');
                   setHireServicesTab('explore');
                 }}
-                className={`px-3 py-1.5 rounded-xl transition-all hidden sm:inline-block ${
+                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
                   appMode === 'hire_services'
                     ? 'bg-[#963E20] text-white shadow-xs'
                     : 'text-stone-700 hover:text-stone-900'
@@ -739,16 +739,16 @@ export default function App() {
             </div>
 
             {/* User Profile & Actions */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               {/* Authenticated user pill */}
-              <div className="hidden lg:flex items-center gap-2 px-2.5 py-1 bg-stone-100/90 rounded-full border border-stone-200/80">
+              <div className="hidden xl:flex items-center gap-2 px-2.5 py-1 bg-stone-100/90 rounded-full border border-stone-200/80">
                 <img
                   src={currentUserProfile?.avatar_url || artisanProfile.avatarUrl}
                   alt={currentUserProfile?.full_name || 'User'}
                   className="w-6 h-6 rounded-full object-cover border border-amber-900/20"
                 />
                 <div className="text-left text-[11px] leading-tight">
-                  <div className="font-bold text-stone-900 truncate max-w-[100px]">
+                  <div className="font-bold text-stone-900 truncate max-w-[90px]">
                     {currentUserProfile?.full_name?.split(' ')[0] || 'User'}
                   </div>
                   <div className="text-[9px] uppercase tracking-wider font-extrabold text-[#963E20]">
@@ -761,7 +761,7 @@ export default function App() {
               <button
                 id="btn-language-toggle"
                 onClick={() => setLanguage(language === 'en' ? 'hi' : 'en')}
-                className="px-3 py-1 bg-[#D1EBE1] text-[#1D5C4A] hover:bg-[#c2e4d8] text-xs font-bold rounded-full transition-colors"
+                className="px-2.5 sm:px-3 py-1 bg-[#D1EBE1] text-[#1D5C4A] hover:bg-[#c2e4d8] text-[11px] sm:text-xs font-bold rounded-full transition-colors cursor-pointer"
                 title="Switch Language"
               >
                 {language === 'en' ? 'हिन्दी' : 'English'}
@@ -770,7 +770,7 @@ export default function App() {
               {/* AI Voice Assistant */}
               <button
                 onClick={() => setIsVoiceAssistantOpen(true)}
-                className="w-9 h-9 rounded-full bg-amber-100/70 hover:bg-amber-200 text-[#963E20] flex items-center justify-center transition-colors"
+                className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-amber-100/70 hover:bg-amber-200 text-[#963E20] flex items-center justify-center transition-colors cursor-pointer shrink-0"
                 title="AI Voice Assistant"
               >
                 <Mic className="w-4 h-4" />
@@ -779,13 +779,61 @@ export default function App() {
               {/* Real Supabase Logout */}
               <button
                 onClick={handleLogout}
-                className="w-9 h-9 rounded-full bg-rose-50 hover:bg-rose-100 text-rose-700 flex items-center justify-center transition-colors border border-rose-200/60"
+                className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-rose-50 hover:bg-rose-100 text-rose-700 flex items-center justify-center transition-colors border border-rose-200/60 cursor-pointer shrink-0"
                 title={language === 'hi' ? 'लॉगआउट करें' : 'Log Out'}
               >
                 <LogOut className="w-4 h-4" />
               </button>
             </div>
 
+          </div>
+
+          {/* Mobile Secondary Row Mode Tabs (Clean & full width, zero overflow) */}
+          <div className="flex md:hidden items-center bg-stone-100/90 p-0.5 rounded-2xl border border-stone-200/80 text-[11px] font-bold w-full justify-between">
+            <button
+              type="button"
+              onClick={() => {
+                setAppMode('artisan_hub');
+                setArtisanTab('home');
+              }}
+              className={`flex-1 py-1.5 px-2 rounded-xl text-center transition-all cursor-pointer truncate ${
+                appMode === 'artisan_hub'
+                  ? 'bg-[#963E20] text-white shadow-xs'
+                  : 'text-stone-700 hover:text-stone-900'
+              }`}
+            >
+              Artisan Hub
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setAppMode('marketplace')}
+              className={`flex-1 py-1.5 px-2 rounded-xl text-center transition-all flex items-center justify-center gap-1 cursor-pointer truncate ${
+                appMode === 'marketplace'
+                  ? 'bg-[#963E20] text-white shadow-xs'
+                  : 'text-stone-700 hover:text-stone-900'
+              }`}
+            >
+              <span>Shop Crafts</span>
+              {orders.filter(o => o.status === 'shipped' || o.status === 'processing' || o.status === 'new').length > 0 && (
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${appMode === 'marketplace' ? 'bg-amber-300' : 'bg-[#1D5C4A]'}`} />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setAppMode('hire_services');
+                setHireServicesTab('explore');
+              }}
+              className={`flex-1 py-1.5 px-2 rounded-xl text-center transition-all cursor-pointer truncate ${
+                appMode === 'hire_services'
+                  ? 'bg-[#963E20] text-white shadow-xs'
+                  : 'text-stone-700 hover:text-stone-900'
+              }`}
+            >
+              Hire Karigars
+            </button>
           </div>
 
           {/* Sub Navigation if in Hire Services mode */}
@@ -820,7 +868,7 @@ export default function App() {
       </header>
 
       {/* Main Content Sections */}
-      <main className="flex-1 w-full max-w-7xl mx-auto px-2 sm:px-4 py-4">
+      <main className="flex-1 w-full max-w-7xl mx-auto px-2 sm:px-4 py-3 sm:py-4 overflow-x-hidden">
         
         {/* MODE 1: ARTISAN HUB (Matches Screenshots 1, 5, 6, 7) */}
         {appMode === 'artisan_hub' && (

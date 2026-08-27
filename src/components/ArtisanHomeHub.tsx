@@ -49,24 +49,24 @@ export function ArtisanHomeHub({
   const totalSales = orders.reduce((sum, o) => sum + (o.status !== 'cancelled' ? o.totalAmount : 0), 0);
 
   return (
-    <div className="w-full max-w-lg mx-auto pb-24 px-4 pt-3 space-y-6">
+    <div className="w-full max-w-lg mx-auto pb-24 px-3 sm:px-4 pt-1 sm:pt-3 space-y-4 sm:space-y-6">
       
       {/* Top Welcome Greeting matching Screenshot 1 */}
       <div className="space-y-1 pt-1">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl sm:text-[28px] font-bold text-stone-900 tracking-tight flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-xl sm:text-[28px] font-bold text-stone-900 tracking-tight flex items-center gap-1.5 sm:gap-2">
             <span>Namaste, {artisanProfile.name.split(' ')[0]}</span>
-            <span className="text-2xl">👋</span>
+            <span className="text-xl sm:text-2xl">👋</span>
           </h1>
           <button
             onClick={onSwitchToMarketplace}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-100/80 hover:bg-amber-200/80 text-[#963E20] text-xs font-bold transition-colors border border-amber-900/10"
+            className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full bg-amber-100/80 hover:bg-amber-200/80 text-[#963E20] text-[11px] sm:text-xs font-bold transition-colors border border-amber-900/10 shrink-0 cursor-pointer"
           >
-            <Store className="w-3.5 h-3.5" />
+            <Store className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
             <span>Buyer View</span>
           </button>
         </div>
-        <p className="text-sm text-stone-600 font-medium">
+        <p className="text-xs sm:text-sm text-stone-600 font-medium">
           Let’s take your craft to more customers.
         </p>
       </div>
@@ -75,46 +75,46 @@ export function ArtisanHomeHub({
       <button
         type="button"
         onClick={onOpenAddProduct}
-        className="w-full py-4 px-6 rounded-2xl bg-[#963E20] hover:bg-[#80341A] text-white font-bold text-base sm:text-lg shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 active:scale-[0.99]"
+        className="w-full py-3.5 sm:py-4 px-4 sm:px-6 rounded-2xl bg-[#963E20] hover:bg-[#80341A] text-white font-bold text-base sm:text-lg shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 active:scale-[0.99] cursor-pointer"
       >
-        <Plus className="w-6 h-6 stroke-[2.5]" />
+        <Plus className="w-5 sm:w-6 h-5 sm:h-6 stroke-[2.5]" />
         <span>Add New Product</span>
       </button>
 
       {/* 3 Metric Cards Triplet matching Screenshot 1 */}
-      <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <button
           onClick={onNavigateToProducts}
-          className="bg-white hover:bg-stone-50/90 rounded-2xl p-3 sm:p-3.5 border border-stone-200/80 shadow-xs text-center transition-all flex flex-col justify-center items-center"
+          className="bg-white hover:bg-stone-50/90 rounded-2xl p-2.5 sm:p-3.5 border border-stone-200/80 shadow-xs text-center transition-all flex flex-col justify-center items-center cursor-pointer"
         >
-          <span className="text-xl sm:text-2xl font-extrabold text-stone-900 leading-tight">
+          <span className="text-lg sm:text-2xl font-extrabold text-stone-900 leading-tight">
             {products.length}
           </span>
-          <span className="text-[11px] font-semibold text-stone-500 mt-1 leading-tight">
+          <span className="text-[10px] sm:text-[11px] font-semibold text-stone-500 mt-1 leading-tight">
             Products<br />Listed
           </span>
         </button>
 
         <button
           onClick={onNavigateToOrders}
-          className="bg-white hover:bg-stone-50/90 rounded-2xl p-3 sm:p-3.5 border border-stone-200/80 shadow-xs text-center transition-all flex flex-col justify-center items-center"
+          className="bg-white hover:bg-stone-50/90 rounded-2xl p-2.5 sm:p-3.5 border border-stone-200/80 shadow-xs text-center transition-all flex flex-col justify-center items-center cursor-pointer"
         >
-          <span className="text-xl sm:text-2xl font-extrabold text-stone-900 leading-tight">
+          <span className="text-lg sm:text-2xl font-extrabold text-stone-900 leading-tight">
             {newOrdersCount}
           </span>
-          <span className="text-[11px] font-semibold text-stone-500 mt-1 leading-tight">
+          <span className="text-[10px] sm:text-[11px] font-semibold text-stone-500 mt-1 leading-tight">
             New<br />Orders
           </span>
         </button>
 
         <button
           onClick={onNavigateToProfile}
-          className="bg-[#D1EBE1] hover:bg-[#c2e4d8] rounded-2xl p-3 sm:p-3.5 border border-[#B5DEC8] shadow-xs text-center transition-all flex flex-col justify-center items-center"
+          className="bg-[#D1EBE1] hover:bg-[#c2e4d8] rounded-2xl p-2.5 sm:p-3.5 border border-[#B5DEC8] shadow-xs text-center transition-all flex flex-col justify-center items-center cursor-pointer"
         >
-          <span className="text-xl sm:text-2xl font-extrabold text-[#144738] leading-tight">
+          <span className="text-base sm:text-2xl font-extrabold text-[#144738] leading-tight truncate max-w-full">
             ₹{totalSales.toLocaleString('en-IN')}
           </span>
-          <span className="text-[11px] font-bold text-[#1D5C4A] mt-1 leading-tight">
+          <span className="text-[10px] sm:text-[11px] font-bold text-[#1D5C4A] mt-1 leading-tight">
             Total<br />Sales
           </span>
         </button>
