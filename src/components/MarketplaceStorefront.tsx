@@ -17,9 +17,12 @@ import {
   CreditCard,
   Building2,
   ChevronRight,
-  Info
+  Info,
+  MessageSquare,
+  Award,
+  Eye
 } from 'lucide-react';
-import { ReadyProduct, ProductOrder, Language, UserProfile } from '../types';
+import { ReadyProduct, ProductOrder, Language, UserProfile, ProductReview } from '../types';
 import { BuyerPurchasesView } from './BuyerPurchasesView';
 
 interface MarketplaceStorefrontProps {
@@ -31,6 +34,7 @@ interface MarketplaceStorefrontProps {
   onProductOrdered: (order: ProductOrder) => void;
   onCancelOrder?: (orderId: string) => void;
   onSwitchToArtisan: () => void;
+  onRateProduct?: (orderId: string, productId: string, rating: number, feedback: string) => void;
   initialTab?: 'browse' | 'purchases';
 }
 
@@ -53,12 +57,14 @@ export function MarketplaceStorefront({
   onProductOrdered,
   onCancelOrder,
   onSwitchToArtisan,
+  onRateProduct,
   initialTab = 'browse',
 }: MarketplaceStorefrontProps) {
   const [storeTab, setStoreTab] = useState<'browse' | 'purchases'>(initialTab);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProductForBuy, setSelectedProductForBuy] = useState<ReadyProduct | null>(null);
+  const [selectedProductDetail, setSelectedProductDetail] = useState<ReadyProduct | null>(null);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState<ProductOrder | null>(null);
 
@@ -172,14 +178,13 @@ export function MarketplaceStorefront({
 
   return (
     <div className="w-full max-w-5xl mx-auto pb-28 px-3 sm:px-4 pt-2 space-y-6">
-      
       {/* Sub-Header Navigation: Browse Crafts vs My Purchases */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-2 sm:p-2.5 rounded-2xl border border-stone-200 shadow-2xs">
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setStoreTab('browse')}
-            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
+            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
               storeTab === 'browse'
                 ? 'bg-[#963E20] text-white shadow-2xs'
                 : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
@@ -187,9 +192,11 @@ export function MarketplaceStorefront({
           >
             <ShoppingBag className="w-4 h-4" />
             <span>{language === 'hi' ? 'कारीगरी उत्पाद खरीदें' : 'Browse & Buy Crafts'}</span>
-            <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
-              storeTab === 'browse' ? 'bg-white/20 text-white' : 'bg-stone-200 text-stone-700'
-            }`}>
+            <span
+              className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
+                storeTab === 'browse' ? 'bg-white/20 text-white' : 'bg-stone-200 text-stone-700'
+              }`}
+            >
               {products.length}
             </span>
           </button>
@@ -197,22 +204,20 @@ export function MarketplaceStorefront({
           <button
             type="button"
             onClick={() => setStoreTab('purchases')}
-            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
+            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
               storeTab === 'purchases'
                 ? 'bg-[#1D5C4A] text-white shadow-2xs'
                 : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
             }`}
           >
             <Truck className="w-4 h-4" />
-            <span>{language === 'hi' ? 'मेरे खरीदे उत्पाद व डिलीवरी' : 'My Purchases & Delivery'}</span>
-            {activeDeliveryCount > 0 ? (
-              <span className={`text-[11px] px-2 py-0.5 rounded-full font-extrabold ${
-                storeTab === 'purchases' ? 'bg-white text-[#1D5C4A]' : 'bg-[#D1EBE1] text-[#1D5C4A]'
-              }`}>
-                {activeDeliveryCount} Under Delivery
-              </span>
-            ) : (
-              <span className="text-[11px] px-1.5 py-0.2 bg-stone-200 text-stone-700 rounded-full">
+            <span>{language === 'hi' ? 'मेरी खरीदारी व ट्रैकिंग' : 'My Purchases & Tracking'}</span>
+            {myBuyerOrders.length > 0 && (
+              <span
+                className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
+                  storeTab === 'purchases' ? 'bg-white/20 text-white' : 'bg-stone-200 text-stone-700'
+                }`}
+              >
                 {myBuyerOrders.length}
               </span>
             )}
@@ -221,7 +226,7 @@ export function MarketplaceStorefront({
 
         <button
           onClick={onSwitchToArtisan}
-          className="px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-[#963E20] text-xs font-bold flex items-center gap-1.5 transition-colors border border-amber-200 self-end sm:self-auto"
+          className="px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-[#963E20] text-xs font-bold flex items-center gap-1.5 transition-colors border border-amber-200 self-end sm:self-auto cursor-pointer"
         >
           <Building2 className="w-3.5 h-3.5" />
           <span>Artisan Seller Hub</span>
@@ -236,6 +241,7 @@ export function MarketplaceStorefront({
           orders={myBuyerOrders}
           onBrowseMarketplace={() => setStoreTab('browse')}
           onCancelOrder={onCancelOrder}
+          onRateProduct={onRateProduct}
         />
       ) : (
         /* VIEW: BROWSE READY CRAFTS */
@@ -259,7 +265,7 @@ export function MarketplaceStorefront({
               {activeDeliveryCount > 0 && (
                 <button
                   onClick={() => setStoreTab('purchases')}
-                  className="px-4 py-3 rounded-2xl bg-[#D1EBE1] hover:bg-[#c2e4d8] text-[#1D5C4A] font-bold text-xs sm:text-sm shadow-2xs flex items-center gap-2 transition-transform active:scale-95"
+                  className="px-4 py-3 rounded-2xl bg-[#D1EBE1] hover:bg-[#c2e4d8] text-[#1D5C4A] font-bold text-xs sm:text-sm shadow-2xs flex items-center gap-2 transition-transform active:scale-95 cursor-pointer"
                 >
                   <Truck className="w-4 h-4 animate-bounce" />
                   <span>Track {activeDeliveryCount} In-Transit Orders</span>
@@ -267,37 +273,36 @@ export function MarketplaceStorefront({
               )}
               <button
                 onClick={onSwitchToArtisan}
-                className="px-4 py-3 rounded-2xl bg-[#963E20] hover:bg-[#80341A] text-white font-bold text-xs sm:text-sm shadow-sm flex items-center gap-2"
+                className="px-4 py-3 rounded-2xl bg-[#963E20] hover:bg-[#80341A] text-white font-bold text-xs sm:text-sm shadow-sm flex items-center gap-2 cursor-pointer"
               >
-                <span>Sell Your Craft</span>
-                <ArrowRight className="w-4 h-4" />
+                <span>Sell Your Products</span>
+                <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          {/* Search & Category Filter Bar */}
+          {/* Search & Category Filter Controls */}
           <div className="space-y-3">
             <div className="relative">
-              <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-stone-400" />
+              <Search className="w-4 h-4 text-stone-400 absolute left-4 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
+                placeholder="Search Banarasi silk, carved boxes, clay kulhad, Jaipur block print..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search handloom sarees, rosewood boxes, pottery, brass diyas..."
-                className="w-full pl-12 pr-4 py-3.5 rounded-2xl bg-white border border-stone-200 shadow-xs text-sm font-medium text-stone-800 focus:outline-none focus:border-[#963E20]"
+                className="w-full pl-11 pr-4 py-3 bg-white border border-stone-200 rounded-2xl text-xs sm:text-sm focus:outline-none focus:border-[#963E20] shadow-2xs"
               />
             </div>
 
-            {/* Category Pills */}
-            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+            <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
               {CATEGORIES.map((cat) => (
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
+                  className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                     selectedCategory === cat
-                      ? 'bg-[#963E20] text-white shadow-xs'
-                      : 'bg-stone-200/80 text-stone-700 hover:bg-stone-300/70'
+                      ? 'bg-[#963E20] text-white shadow-2xs'
+                      : 'bg-white text-stone-600 hover:bg-stone-100 border border-stone-200'
                   }`}
                 >
                   {cat}
@@ -311,12 +316,13 @@ export function MarketplaceStorefront({
             {filteredProducts.map((product) => (
               <div
                 key={product.id}
-                className="bg-white rounded-3xl overflow-hidden border border-stone-200 shadow-xs hover:shadow-lg transition-all flex flex-col group"
+                className="bg-white rounded-3xl border border-stone-200 overflow-hidden shadow-2xs hover:shadow-md transition-all duration-300 flex flex-col group cursor-pointer"
+                onClick={() => setSelectedProductDetail(product)}
               >
-                {/* Image */}
-                <div className="relative h-56 bg-stone-100 overflow-hidden">
+                {/* Product Image */}
+                <div className="relative aspect-4/3 bg-stone-100 overflow-hidden">
                   <img
-                    src={product.images[0] || product.aiEnhancedImage}
+                    src={product.images[0] || product.aiEnhancedImage || ''}
                     alt={product.name}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
@@ -346,8 +352,12 @@ export function MarketplaceStorefront({
                       </span>
                       <div className="flex items-center gap-1 text-amber-600 font-bold">
                         <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
-                        <span>{product.rating}</span>
-                        <span className="text-stone-400">({product.reviewsCount})</span>
+                        <span>{product.rating > 0 ? product.rating.toFixed(1) : 'New'}</span>
+                        {product.reviewsCount > 0 ? (
+                          <span className="text-stone-400">({product.reviewsCount})</span>
+                        ) : (
+                          <span className="text-stone-400">(0 reviews)</span>
+                        )}
                       </div>
                     </div>
 
@@ -374,7 +384,10 @@ export function MarketplaceStorefront({
                   </div>
 
                   {/* Price & Buy Button */}
-                  <div className="pt-3 border-t border-stone-100 flex items-center justify-between gap-3">
+                  <div
+                    className="pt-3 border-t border-stone-100 flex items-center justify-between gap-3"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <div>
                       <div className="flex items-baseline gap-2">
                         <span className="text-xl font-extrabold text-[#963E20]">
@@ -413,7 +426,7 @@ export function MarketplaceStorefront({
                           setQuantity(1);
                           setIsCheckoutOpen(true);
                         }}
-                        className="px-4 py-2.5 rounded-xl bg-[#963E20] hover:bg-[#80341A] text-white font-bold text-xs shadow-xs flex items-center gap-1.5 transition-transform active:scale-95"
+                        className="px-4 py-2.5 rounded-xl bg-[#963E20] hover:bg-[#80341A] text-white font-bold text-xs shadow-xs flex items-center gap-1.5 transition-transform active:scale-95 cursor-pointer"
                       >
                         <ShoppingBag className="w-3.5 h-3.5" />
                         <span>Buy Now</span>
@@ -423,6 +436,181 @@ export function MarketplaceStorefront({
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Product Detail & Reviews Modal */}
+      {selectedProductDetail && (
+        <div
+          id="product-detail-modal-backdrop"
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex justify-center items-center p-3 sm:p-4 overflow-y-auto"
+          onClick={() => setSelectedProductDetail(null)}
+        >
+          <div
+            id="product-detail-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-stone-200 overflow-hidden my-auto max-h-[92vh] flex flex-col animate-in zoom-in-95"
+          >
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-amber-800 to-amber-950 text-white p-5 sm:p-6 relative shrink-0">
+              <button
+                onClick={() => setSelectedProductDetail(null)}
+                className="absolute top-4 right-4 p-2 text-white/80 hover:text-white bg-black/20 hover:bg-black/30 rounded-full transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="flex items-center gap-2 mb-1">
+                <Sparkles className="w-5 h-5 text-amber-300" />
+                <h2 className="text-xl font-bold text-white tracking-tight">{selectedProductDetail.name}</h2>
+              </div>
+              <p className="text-xs text-amber-100/90 leading-relaxed">
+                {selectedProductDetail.craftType} • By {selectedProductDetail.artisanName} ({selectedProductDetail.artisanCity})
+              </p>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-5">
+              {/* Image Gallery */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="rounded-2xl overflow-hidden bg-stone-100 aspect-4/3 border border-stone-200">
+                  <img
+                    src={selectedProductDetail.images[0] || selectedProductDetail.aiEnhancedImage || ''}
+                    alt={selectedProductDetail.name}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                {selectedProductDetail.images[1] ? (
+                  <div className="rounded-2xl overflow-hidden bg-stone-100 aspect-4/3 border border-stone-200">
+                    <img
+                      src={selectedProductDetail.images[1]}
+                      alt={`${selectedProductDetail.name} view`}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                ) : (
+                  <div className="bg-stone-50 rounded-2xl p-4 border border-stone-200 flex flex-col justify-center space-y-2 text-xs text-stone-700">
+                    <div className="font-bold text-stone-900 flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      100% Authentic GI & Guild Verified Craft
+                    </div>
+                    {selectedProductDetail.materials && (
+                      <p>
+                        <span className="font-semibold text-stone-900">Materials:</span>{' '}
+                        {selectedProductDetail.materials.join(', ')}
+                      </p>
+                    )}
+                    {selectedProductDetail.dimensions && (
+                      <p>
+                        <span className="font-semibold text-stone-900">Dimensions:</span>{' '}
+                        {selectedProductDetail.dimensions}
+                      </p>
+                    )}
+                    {selectedProductDetail.weight && (
+                      <p>
+                        <span className="font-semibold text-stone-900">Weight:</span>{' '}
+                        {selectedProductDetail.weight}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Description */}
+              <div className="space-y-1.5">
+                <h4 className="font-bold text-stone-900 text-sm">About this Handcrafted Masterpiece</h4>
+                <p className="text-xs text-stone-600 leading-relaxed">{selectedProductDetail.description}</p>
+                {selectedProductDetail.hindiDescription && (
+                  <p className="text-xs text-stone-500 leading-relaxed italic">{selectedProductDetail.hindiDescription}</p>
+                )}
+              </div>
+
+              {/* Customer Ratings & Reviews Section */}
+              <div className="space-y-3 pt-3 border-t border-stone-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Star className="w-5 h-5 fill-amber-500 text-amber-500" />
+                    <h4 className="font-bold text-stone-900 text-sm">
+                      Verified Customer Ratings & Reviews
+                    </h4>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-stone-800">
+                    <span className="text-amber-700 text-sm">
+                      {selectedProductDetail.rating > 0 ? selectedProductDetail.rating.toFixed(1) : 'New'}
+                    </span>
+                    <span className="text-stone-400">
+                      ({selectedProductDetail.reviews?.length || selectedProductDetail.reviewsCount || 0} reviews)
+                    </span>
+                  </div>
+                </div>
+
+                {/* Reviews List */}
+                <div className="space-y-2.5">
+                  {selectedProductDetail.reviews && selectedProductDetail.reviews.length > 0 ? (
+                    selectedProductDetail.reviews.map((rev) => (
+                      <div key={rev.id} className="bg-stone-50 rounded-2xl p-3.5 border border-stone-200/80 space-y-1.5 text-xs">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-stone-900">{rev.author}</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center gap-0.5">
+                              <CheckCircle2 className="w-2.5 h-2.5" />
+                              Verified Buyer
+                            </span>
+                          </div>
+                          <div className="flex text-amber-400">
+                            {[1, 2, 3, 4, 5].map((s) => (
+                              <Star
+                                key={s}
+                                className={`w-3 h-3 ${s <= rev.rating ? 'fill-amber-400 text-amber-400' : 'text-stone-300'}`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                        <p className="text-stone-700 font-medium leading-relaxed">"{rev.comment}"</p>
+                        <div className="flex items-center justify-between text-[11px] text-stone-400 pt-0.5">
+                          <span>{rev.city || 'India'}</span>
+                          <span>{rev.date}</span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="bg-amber-50/60 p-4 rounded-2xl border border-amber-200/60 text-center space-y-1">
+                      <Star className="w-6 h-6 text-amber-400 mx-auto" />
+                      <p className="text-xs font-bold text-amber-950">Be the first to review this craft!</p>
+                      <p className="text-[11px] text-amber-800">
+                        Order this authentic piece and share your rating upon direct doorstep delivery.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Bar */}
+              <div className="pt-3 border-t border-stone-200 flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-[11px] text-stone-500">Artisan Direct Price</div>
+                  <div className="text-2xl font-extrabold text-[#963E20]">
+                    ₹{selectedProductDetail.price.toLocaleString('en-IN')}
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      const prod = selectedProductDetail;
+                      setSelectedProductDetail(null);
+                      setSelectedProductForBuy(prod);
+                      setQuantity(1);
+                      setIsCheckoutOpen(true);
+                    }}
+                    className="px-6 py-3 rounded-2xl bg-[#963E20] hover:bg-[#80341A] text-white font-bold text-xs sm:text-sm shadow-sm flex items-center gap-2 cursor-pointer transition-transform active:scale-95"
+                  >
+                    <ShoppingBag className="w-4 h-4" />
+                    <span>Instant Checkout</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -442,113 +630,114 @@ export function MarketplaceStorefront({
               </div>
               <button
                 onClick={() => setIsCheckoutOpen(false)}
-                className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-stone-600 hover:bg-stone-200"
+                className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-stone-600 hover:bg-stone-200 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Selected Product Summary */}
-            <div className="bg-stone-50 rounded-2xl p-4 border border-stone-200/80 flex items-center gap-4">
+            {/* Product Summary */}
+            <div className="bg-stone-50 rounded-2xl p-3.5 border border-stone-200 flex items-center gap-3.5">
               <img
-                src={selectedProductForBuy.images[0] || selectedProductForBuy.aiEnhancedImage}
+                src={selectedProductForBuy.images[0] || selectedProductForBuy.aiEnhancedImage || ''}
                 alt={selectedProductForBuy.name}
-                className="w-16 h-16 rounded-xl object-cover"
+                className="w-16 h-16 rounded-xl object-cover border border-stone-200 shrink-0"
               />
-              <div className="flex-1 min-w-0">
-                <h4 className="font-bold text-stone-900 text-sm truncate">
+              <div className="flex-1 min-w-0 space-y-0.5">
+                <h4 className="font-bold text-xs sm:text-sm text-stone-900 truncate">
                   {selectedProductForBuy.name}
                 </h4>
-                <p className="text-xs text-stone-500 truncate">
-                  Crafted by {selectedProductForBuy.artisanName} • {selectedProductForBuy.artisanCity}
+                <p className="text-[11px] text-stone-500">
+                  By {selectedProductForBuy.artisanName} ({selectedProductForBuy.artisanCity})
                 </p>
-                <div className="text-sm font-extrabold text-[#963E20] mt-1">
-                  ₹{selectedProductForBuy.price.toLocaleString('en-IN')}
+                <div className="text-xs font-extrabold text-[#963E20]">
+                  ₹{selectedProductForBuy.price.toLocaleString('en-IN')} each
                 </div>
               </div>
             </div>
 
             {/* Checkout Form */}
-            <form onSubmit={handlePlaceOrder} className="space-y-4 text-xs">
-              <div className="space-y-1">
-                <label className="font-bold text-stone-700">Buyer Full Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Enter your full name"
-                  value={buyerName}
-                  onChange={(e) => setBuyerName(e.target.value)}
-                  className="w-full p-3 rounded-xl border border-stone-300 font-medium focus:outline-none focus:border-[#963E20]"
-                />
-              </div>
-
+            <form onSubmit={handlePlaceOrder} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-bold text-stone-700">Mobile Phone</label>
+                <div>
+                  <label className="text-xs font-bold text-stone-700 block mb-1">
+                    Your Full Name *
+                  </label>
                   <input
-                    type="tel"
+                    type="text"
                     required
-                    placeholder="e.g. +91 98765 43210"
-                    value={buyerPhone}
-                    onChange={(e) => setBuyerPhone(e.target.value)}
-                    className="w-full p-3 rounded-xl border border-stone-300 font-medium focus:outline-none focus:border-[#963E20]"
+                    placeholder="e.g. Rameshwar"
+                    value={buyerName}
+                    onChange={(e) => setBuyerName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-xs focus:outline-none focus:border-[#963E20]"
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center">
-                    <label className="font-bold text-stone-700">Quantity</label>
-                    <span className="text-[11px] text-[#1D5C4A] font-semibold">
-                      (Available: {selectedProductForBuy.stock} units)
-                    </span>
-                  </div>
-                  <div className="flex items-center border border-stone-300 rounded-xl overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                      className="px-4 py-3 bg-stone-100 font-bold hover:bg-stone-200"
-                    >
-                      -
-                    </button>
-                    <div className="flex-1 text-center font-bold text-sm">{quantity}</div>
-                    <button
-                      type="button"
-                      disabled={quantity >= selectedProductForBuy.stock}
-                      onClick={() => setQuantity(Math.min(selectedProductForBuy.stock, quantity + 1))}
-                      className="px-4 py-3 bg-stone-100 font-bold hover:bg-stone-200 disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      +
-                    </button>
-                  </div>
+                <div>
+                  <label className="text-xs font-bold text-stone-700 block mb-1">
+                    Contact Phone (for delivery SMS) *
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="e.g. 98290 12345"
+                    value={buyerPhone}
+                    onChange={(e) => setBuyerPhone(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-xs focus:outline-none focus:border-[#963E20]"
+                  />
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="font-bold text-stone-700">Delivery Address</label>
-                <textarea
+              <div>
+                <label className="text-xs font-bold text-stone-700 block mb-1">
+                  Delivery Street Address & Pincode *
+                </label>
+                <input
+                  type="text"
                   required
-                  rows={2}
-                  placeholder="Complete street address, apartment, city, state and PIN code"
+                  placeholder="e.g. House #14, M.I. Road, Jaipur, Rajasthan - 302001"
                   value={buyerAddress}
                   onChange={(e) => setBuyerAddress(e.target.value)}
-                  className="w-full p-3 rounded-xl border border-stone-300 font-medium focus:outline-none focus:border-[#963E20] resize-none"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-xs focus:outline-none focus:border-[#963E20]"
                 />
               </div>
 
+              {/* Quantity */}
+              <div className="flex items-center justify-between bg-stone-50 p-3 rounded-xl border border-stone-200">
+                <span className="text-xs font-bold text-stone-700">Quantity (Units):</span>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                    className="w-7 h-7 rounded-lg bg-white border border-stone-300 text-stone-700 font-bold flex items-center justify-center hover:bg-stone-100 cursor-pointer"
+                  >
+                    -
+                  </button>
+                  <span className="font-bold text-xs text-stone-900 w-4 text-center">{quantity}</span>
+                  <button
+                    type="button"
+                    onClick={() => setQuantity(Math.min(selectedProductForBuy.stock, quantity + 1))}
+                    className="w-7 h-7 rounded-lg bg-white border border-stone-300 text-stone-700 font-bold flex items-center justify-center hover:bg-stone-100 cursor-pointer"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
               {/* Payment Method */}
-              <div className="space-y-1">
-                <label className="font-bold text-stone-700">Payment Option</label>
-                <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-stone-700 block">Payment Method:</label>
+                <div className="grid grid-cols-3 gap-2 text-xs">
                   {[
-                    { id: 'UPI', label: 'UPI / GPay / PhonePe' },
-                    { id: 'Card', label: 'Debit / Credit Card' },
+                    { id: 'UPI', label: 'UPI / QR' },
                     { id: 'Cash on Delivery', label: 'Cash on Delivery' },
+                    { id: 'Card', label: 'Card / NetBanking' },
                   ].map((pm) => (
                     <button
-                      type="button"
                       key={pm.id}
+                      type="button"
                       onClick={() => setPaymentMethod(pm.id as typeof paymentMethod)}
-                      className={`p-2.5 rounded-xl border text-center font-bold transition-all ${
+                      className={`p-2.5 rounded-xl border text-center font-bold transition-all cursor-pointer ${
                         paymentMethod === pm.id
                           ? 'border-[#963E20] bg-amber-50/70 text-[#963E20]'
                           : 'border-stone-200 text-stone-600 hover:border-stone-300'
@@ -575,7 +764,7 @@ export function MarketplaceStorefront({
 
               <button
                 type="submit"
-                className="w-full py-4 rounded-2xl bg-[#963E20] hover:bg-[#80341A] text-white font-bold text-sm sm:text-base transition-colors shadow-md flex items-center justify-center gap-2"
+                className="w-full py-4 rounded-2xl bg-[#963E20] hover:bg-[#80341A] text-white font-bold text-sm sm:text-base transition-colors shadow-md flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Check className="w-5 h-5" />
                 Confirm & Place Order
@@ -603,7 +792,9 @@ export function MarketplaceStorefront({
             <div className="bg-stone-50 rounded-2xl p-3 border border-stone-200 text-xs text-left space-y-1">
               <div className="flex justify-between">
                 <span className="text-stone-500">Item:</span>
-                <span className="font-bold text-stone-800">{orderSuccess.productName} (x{orderSuccess.quantity})</span>
+                <span className="font-bold text-stone-800">
+                  {orderSuccess.productName} (x{orderSuccess.quantity})
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-stone-500">Amount:</span>
@@ -621,7 +812,7 @@ export function MarketplaceStorefront({
                   setOrderSuccess(null);
                   setStoreTab('purchases');
                 }}
-                className="w-full py-3.5 rounded-2xl bg-[#1D5C4A] hover:bg-[#144738] text-white font-bold text-sm flex items-center justify-center gap-2 shadow-xs"
+                className="w-full py-3.5 rounded-2xl bg-[#1D5C4A] hover:bg-[#144738] text-white font-bold text-sm flex items-center justify-center gap-2 shadow-xs cursor-pointer"
               >
                 <Truck className="w-4 h-4" />
                 <span>Track Delivery Status</span>
@@ -629,7 +820,7 @@ export function MarketplaceStorefront({
 
               <button
                 onClick={() => setOrderSuccess(null)}
-                className="w-full py-3 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs"
+                className="w-full py-3 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs cursor-pointer"
               >
                 Continue Shopping
               </button>
@@ -637,7 +828,6 @@ export function MarketplaceStorefront({
           </div>
         </div>
       )}
-
     </div>
   );
 }

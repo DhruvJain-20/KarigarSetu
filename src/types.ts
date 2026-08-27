@@ -34,8 +34,41 @@ export type TradeCategory =
   | 'stonecraft'
   | 'leathercraft';
 
+export interface ProductReview {
+  id: string;
+  orderId?: string;
+  buyerName?: string;
+  buyerAvatar?: string;
+  author?: string;
+  city?: string;
+  date?: string;
+  rating: number;
+  comment: string;
+  createdAt?: string;
+  isVerifiedPurchase?: boolean;
+  verifiedBuyer?: boolean;
+}
+
+export interface JobApplicant {
+  id: string;
+  jobId: string;
+  applicantUserId?: string;
+  applicantName: string;
+  applicantPhone: string;
+  applicantTrade?: TradeCategory;
+  proposedRate: number;
+  rateType: 'daily' | 'fixed';
+  proposalMessage: string;
+  experienceYears?: number;
+  applicantAvatar?: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  appliedAt: string;
+}
+
 export interface Karigar {
   id: string;
+  userId?: string;
+  isUserCreated?: boolean;
   name: string;
   hindiName: string;
   trade: TradeCategory;
@@ -74,6 +107,10 @@ export interface Karigar {
 
 export interface JobPost {
   id: string;
+  postedByUserId?: string;
+  userId?: string;
+  posterName?: string;
+  posterPhone?: string;
   title: string;
   trade: TradeCategory;
   description: string;
@@ -89,6 +126,7 @@ export interface JobPost {
   clientPhone: string;
   createdAt: string;
   applicantsCount: number;
+  applicants?: JobApplicant[];
   status: 'open' | 'in_progress' | 'completed';
 }
 
@@ -97,6 +135,7 @@ export interface BookingRequest {
   karigarId: string;
   karigarName: string;
   karigarTrade: TradeCategory;
+  clientUserId?: string;
   clientName: string;
   clientPhone: string;
   clientAddress: string;
@@ -133,6 +172,7 @@ export interface ReadyProduct {
   tags: string[];
   rating: number;
   reviewsCount: number;
+  reviews?: ProductReview[];
   createdAt: string;
 }
 
@@ -158,6 +198,10 @@ export interface ProductOrder {
   trackingNumber?: string;
   paymentMethod: 'UPI' | 'Cash on Delivery' | 'Card';
   paymentStatus: 'paid' | 'pending';
+  isRated?: boolean;
+  userRating?: number;
+  userReview?: string;
+  userRatedAt?: string;
 }
 
 export interface ArtisanUserProfile {

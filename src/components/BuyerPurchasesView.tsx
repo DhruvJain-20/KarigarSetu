@@ -35,6 +35,7 @@ interface BuyerPurchasesViewProps {
   onBrowseMarketplace: () => void;
   onCancelOrder?: (orderId: string) => void;
   onContactArtisan?: (artisanName: string) => void;
+  onRateProduct?: (orderId: string, productId: string, rating: number, feedback: string) => void;
 }
 
 export function BuyerPurchasesView({
@@ -43,6 +44,7 @@ export function BuyerPurchasesView({
   onBrowseMarketplace,
   onCancelOrder,
   onContactArtisan,
+  onRateProduct,
 }: BuyerPurchasesViewProps) {
   const [filter, setFilter] = useState<'all' | 'in_transit' | 'processing' | 'delivered'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -471,12 +473,18 @@ export function BuyerPurchasesView({
                       type="button"
                       onClick={() => {
                         setRatingModalOrder(order);
+                        setUserRating(order.userRating || 5);
+                        setUserFeedback(order.userReview || '');
                         setRatingSubmitted(false);
                       }}
-                      className="px-3.5 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-[#963E20] font-bold text-xs flex items-center gap-1.5 transition-colors border border-amber-200/60"
+                      className={`px-3.5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors border ${
+                        order.isRated
+                          ? 'bg-amber-100/70 text-[#963E20] border-amber-300'
+                          : 'bg-amber-50 hover:bg-amber-100 text-[#963E20] border-amber-200/60'
+                      }`}
                     >
                       <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
-                      <span>Rate Product & Artisan</span>
+                      <span>{order.isRated ? `Rated ★ ${order.userRating}/5` : 'Rate Product & Artisan'}</span>
                     </button>
                   )}
 
@@ -500,6 +508,46 @@ export function BuyerPurchasesView({
                   </a>
                 </div>
               </div>
+
+              {/* User Submitted Rating Box */}
+              {order.isRated && (
+                <div className="bg-amber-50/80 p-3 rounded-2xl border border-amber-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className="flex text-amber-400">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Star
+                          key={star}
+                          className={`w-3.5 h-3.5 ${
+                            star <= (order.userRating || 5)
+                              ? 'fill-amber-400 text-amber-400'
+                              : 'text-stone-300'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <span className="font-bold text-amber-950">
+                      Your Review: {order.userRating}/5 Stars
+                    </span>
+                    {order.userReview && (
+                      <span className="text-stone-700 italic line-clamp-1">
+                        "{order.userReview}"
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRatingModalOrder(order);
+                      setUserRating(order.userRating || 5);
+                      setUserFeedback(order.userReview || '');
+                      setRatingSubmitted(false);
+                    }}
+                    className="text-[11px] font-bold text-[#963E20] hover:underline self-end sm:self-auto cursor-pointer"
+                  >
+                    Edit Review
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -840,7 +888,9 @@ export function BuyerPurchasesView({
                   <Check className="w-6 h-6 stroke-[3]" />
                 </div>
                 <h4 className="font-bold text-stone-900">Thank You for Supporting Artisans!</h4>
-                <p className="text-xs text-stone-500">Your 5-star rating has been added to {ratingModalOrder.artisanName}'s verified craft record.</p>
+                <p className="text-xs text-stone-500">
+                  Your {userRating}-star rating and review have been published to {ratingModalOrder.artisanName}'s verified product record.
+                </p>
                 <button
                   onClick={() => setRatingModalOrder(null)}
                   className="mt-4 px-5 py-2.5 rounded-xl bg-[#963E20] text-white text-xs font-bold"
@@ -897,8 +947,18 @@ export function BuyerPurchasesView({
 
                 <button
                   type="button"
-                  onClick={() => setRatingSubmitted(true)}
-                  className="w-full py-3 rounded-2xl bg-[#963E20] text-white font-bold text-xs shadow-sm"
+                  onClick={() => {
+                    if (onRateProduct && ratingModalOrder) {
+                      onRateProduct(
+                        ratingModalOrder.id,
+                        ratingModalOrder.productId,
+                        userRating,
+                        userFeedback
+                      );
+                    }
+                    setRatingSubmitted(true);
+                  }}
+                  className="w-full py-3 rounded-2xl bg-[#963E20] text-white font-bold text-xs shadow-sm cursor-pointer hover:bg-[#80341A] transition-colors"
                 >
                   Submit Artisan Review
                 </button>

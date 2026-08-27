@@ -10,7 +10,10 @@ import {
   CheckCircle2,
   CalendarCheck,
   ArrowRight,
-  Sparkles
+  Sparkles,
+  Edit,
+  Trash2,
+  UserCheck
 } from 'lucide-react';
 import { Karigar, Language } from '../types';
 import { TRADE_META, TRANSLATIONS } from '../data/translations';
@@ -18,15 +21,21 @@ import { TRADE_META, TRANSLATIONS } from '../data/translations';
 interface KarigarCardProps {
   karigar: Karigar;
   language: Language;
+  isOwner?: boolean;
   onViewProfile: (karigar: Karigar) => void;
   onRequestBooking: (karigar: Karigar) => void;
+  onEditPortfolio?: (karigar: Karigar) => void;
+  onDeletePortfolio?: (karigarId: string) => void;
 }
 
 export const KarigarCard: React.FC<KarigarCardProps> = ({
   karigar,
   language,
+  isOwner,
   onViewProfile,
   onRequestBooking,
+  onEditPortfolio,
+  onDeletePortfolio,
 }) => {
   const t = TRANSLATIONS[language];
   const meta = TRADE_META[karigar.trade] || TRADE_META.handloom;
@@ -39,7 +48,7 @@ export const KarigarCard: React.FC<KarigarCardProps> = ({
   const handleWhatsApp = (e: React.MouseEvent) => {
     e.stopPropagation();
     const msg = encodeURIComponent(
-      `Namaste ${karigar.name} ji! I found your profile on Karigar Setu for ${karigar.specialization}. I would like to inquire about a job.`
+      `Namaste ${karigar.name} ji! I found your portfolio on Karigar Setu for ${karigar.specialization}. I would like to inquire about a job/booking.`
     );
     window.open(`https://wa.me/${karigar.whatsapp}?text=${msg}`, '_blank');
   };
@@ -53,7 +62,7 @@ export const KarigarCard: React.FC<KarigarCardProps> = ({
     <div
       id={`karigar-card-${karigar.id}`}
       onClick={() => onViewProfile(karigar)}
-      className="bg-white rounded-2xl border border-amber-900/10 shadow-sm hover:shadow-md hover:border-amber-600/40 transition-all duration-300 flex flex-col justify-between overflow-hidden cursor-pointer group"
+      className="bg-white rounded-3xl border border-stone-200 shadow-2xs hover:shadow-md hover:border-amber-700/40 transition-all duration-300 flex flex-col justify-between overflow-hidden cursor-pointer group"
     >
       {/* Top Banner / Availability & Trade Badge */}
       <div className="p-5 pb-4">
@@ -79,9 +88,14 @@ export const KarigarCard: React.FC<KarigarCardProps> = ({
 
             <div>
               <div className="flex items-center gap-1.5 flex-wrap">
-                <h3 className="font-bold text-base text-slate-900 group-hover:text-amber-700 transition-colors">
+                <h3 className="font-bold text-base text-slate-900 group-hover:text-amber-800 transition-colors">
                   {displayName}
                 </h3>
+                {isOwner && (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-extrabold border border-amber-300">
+                    My Portfolio
+                  </span>
+                )}
                 {karigar.isAadhaarVerified && (
                   <span
                     title={t.aadhaarVerified}
@@ -93,7 +107,7 @@ export const KarigarCard: React.FC<KarigarCardProps> = ({
                 )}
               </div>
 
-              <p className="text-xs font-medium text-amber-800 line-clamp-1 mt-0.5">
+              <p className="text-xs font-semibold text-amber-800 line-clamp-1 mt-0.5">
                 {displayTrade}
               </p>
 
@@ -130,27 +144,17 @@ export const KarigarCard: React.FC<KarigarCardProps> = ({
 
         {/* Location & Certifications */}
         <div className="flex items-center justify-between text-xs text-slate-500 border-t border-slate-100 pt-2.5">
-          <div className="flex items-center gap-1 text-slate-600 truncate max-w-[65%]">
+          <div className="flex items-center gap-1 text-slate-600 truncate">
             <MapPin className="w-3.5 h-3.5 text-amber-600 shrink-0" />
             <span className="truncate font-medium">{karigar.locality}, {karigar.city}</span>
           </div>
-
-          {karigar.isSkillCertified && (
-            <span
-              title={karigar.certificationBody || 'Government Certified'}
-              className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60"
-            >
-              <Award className="w-3 h-3 text-emerald-600" />
-              <span>NSDC</span>
-            </span>
-          )}
         </div>
 
         {/* Mini Portfolio Thumbnails */}
         {karigar.portfolioImages && karigar.portfolioImages.length > 0 && (
           <div className="grid grid-cols-3 gap-1.5 mt-3 pt-2 border-t border-slate-100">
             {karigar.portfolioImages.slice(0, 3).map((img, i) => (
-              <div key={i} className="h-14 rounded-lg overflow-hidden bg-slate-100 relative group/img">
+              <div key={i} className="h-14 rounded-xl overflow-hidden bg-slate-100 relative group/img">
                 <img
                   src={img}
                   alt={`Portfolio work ${i + 1}`}
@@ -181,37 +185,67 @@ export const KarigarCard: React.FC<KarigarCardProps> = ({
       </div>
 
       {/* Action Buttons Footer */}
-      <div className="bg-slate-50/80 px-4 py-3 border-t border-slate-100 flex items-center justify-between gap-2">
-        <button
-          id={`btn-card-call-${karigar.id}`}
-          onClick={handleCall}
-          className="flex-1 py-1.5 px-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-        >
-          <Phone className="w-3.5 h-3.5 text-slate-600" />
-          <span>{t.callNow}</span>
-        </button>
+      <div className="bg-stone-50/90 px-4 py-3 border-t border-stone-200/80 flex items-center justify-between gap-2">
+        {isOwner ? (
+          <>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onEditPortfolio?.(karigar);
+              }}
+              className="flex-1 py-2 px-3 bg-amber-800 hover:bg-amber-900 text-white text-xs font-bold rounded-xl shadow-2xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Edit className="w-3.5 h-3.5" />
+              <span>Edit Portfolio</span>
+            </button>
 
-        <button
-          id={`btn-card-whatsapp-${karigar.id}`}
-          onClick={handleWhatsApp}
-          className="flex-1 py-1.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-        >
-          <MessageSquare className="w-3.5 h-3.5" />
-          <span>WhatsApp</span>
-        </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (confirm('Are you sure you want to delete this portfolio?')) {
+                  onDeletePortfolio?.(karigar.id);
+                }
+              }}
+              className="py-2 px-3 bg-red-100 hover:bg-red-200 text-red-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              title="Delete Portfolio"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              id={`btn-card-call-${karigar.id}`}
+              onClick={handleCall}
+              className="flex-1 py-1.5 px-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Phone className="w-3.5 h-3.5 text-slate-600" />
+              <span>{t.callNow}</span>
+            </button>
 
-        <button
-          id={`btn-card-book-${karigar.id}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onRequestBooking(karigar);
-          }}
-          className="py-1.5 px-3 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-xl shadow-xs flex items-center justify-center gap-1 transition-colors cursor-pointer"
-          title="Book work or request quotation"
-        >
-          <CalendarCheck className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">{t.bookService}</span>
-        </button>
+            <button
+              id={`btn-card-whatsapp-${karigar.id}`}
+              onClick={handleWhatsApp}
+              className="flex-1 py-1.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>WhatsApp</span>
+            </button>
+
+            <button
+              id={`btn-card-book-${karigar.id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onRequestBooking(karigar);
+              }}
+              className="py-1.5 px-3 bg-amber-800 hover:bg-amber-900 text-white text-xs font-semibold rounded-xl shadow-xs flex items-center justify-center gap-1 transition-colors cursor-pointer"
+              title="Book work or request quotation"
+            >
+              <CalendarCheck className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{t.bookService}</span>
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

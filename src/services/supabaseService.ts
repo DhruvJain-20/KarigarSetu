@@ -4,6 +4,7 @@ import {
   ProductOrder,
   BookingRequest,
   JobPost,
+  JobApplicant,
   Karigar,
   UserProfile,
   ArtisanUserProfile,
@@ -182,11 +183,41 @@ export function mapBookingToDb(booking: BookingRequest, userId?: string) {
  * Normalizes Supabase snake_case job row to camelCase JobPost
  */
 export function mapDbToJobPost(row: any): JobPost {
+  let parsedApplicants: JobApplicant[] = [];
+  if (Array.isArray(row.applicants)) {
+    parsedApplicants = row.applicants;
+  } else if (typeof row.applicants === 'string') {
+    try {
+      parsedApplicants = JSON.parse(row.applicants);
+    } catch {
+      parsedApplicants = [];
+    }
+  }
+
+  let cleanDescription = row.description || '';
+  // Check if applicants are encoded in description metadata envelope
+  if (parsedApplicants.length === 0 && typeof row.description === 'string') {
+    const match = row.description.match(/<!--APPLICANTS_DATA:([\s\S]*?)-->/);
+    if (match) {
+      try {
+        parsedApplicants = JSON.parse(match[1]);
+      } catch {
+        parsedApplicants = [];
+      }
+    }
+  }
+  // Strip metadata envelope from human description
+  cleanDescription = cleanDescription.replace(/<!--APPLICANTS_DATA:[\s\S]*?-->/g, '').trim();
+
   return {
     id: row.id,
+    userId: row.user_id || undefined,
+    postedByUserId: row.user_id || undefined,
+    posterName: row.client_name,
+    posterPhone: row.client_phone,
     title: row.title,
     trade: row.trade,
-    description: row.description,
+    description: cleanDescription,
     city: row.city,
     locality: row.locality || '',
     budgetType: row.budget_type || 'daily',
@@ -198,7 +229,8 @@ export function mapDbToJobPost(row: any): JobPost {
     clientName: row.client_name,
     clientPhone: row.client_phone,
     createdAt: row.created_at || new Date().toISOString(),
-    applicantsCount: Number(row.applicants_count) || 0,
+    applicantsCount: parsedApplicants.length > 0 ? parsedApplicants.length : (Number(row.applicants_count) || 0),
+    applicants: parsedApplicants,
     status: row.status || 'open',
   };
 }
@@ -207,12 +239,18 @@ export function mapDbToJobPost(row: any): JobPost {
  * Converts JobPost to Supabase snake_case job row
  */
 export function mapJobPostToDb(job: JobPost, userId?: string) {
+  const applicantsList = Array.isArray(job.applicants) ? job.applicants : [];
+  const cleanDesc = (job.description || '').replace(/<!--APPLICANTS_DATA:[\s\S]*?-->/g, '').trim();
+  const descWithApplicants = applicantsList.length > 0
+    ? `${cleanDesc}\n\n<!--APPLICANTS_DATA:${JSON.stringify(applicantsList)}-->`
+    : cleanDesc;
+
   return {
     id: job.id,
-    user_id: userId || null,
+    user_id: job.userId || job.postedByUserId || userId || null,
     title: job.title,
     trade: job.trade,
-    description: job.description,
+    description: descWithApplicants,
     city: job.city,
     locality: job.locality,
     budget_type: job.budgetType,
@@ -223,7 +261,7 @@ export function mapJobPostToDb(job: JobPost, userId?: string) {
     is_urgent: job.isUrgent,
     client_name: job.clientName,
     client_phone: job.clientPhone,
-    applicants_count: job.applicantsCount,
+    applicants_count: applicantsList.length || job.applicantsCount || 0,
     status: job.status,
     updated_at: new Date().toISOString(),
   };
@@ -235,6 +273,8 @@ export function mapJobPostToDb(job: JobPost, userId?: string) {
 export function mapDbToKarigar(row: any): Karigar {
   return {
     id: row.id,
+    userId: row.user_id || undefined,
+    isUserCreated: true,
     name: row.name,
     hindiName: row.hindi_name || row.name,
     trade: row.trade,
@@ -271,7 +311,7 @@ export function mapDbToKarigar(row: any): Karigar {
 export function mapKarigarToDb(karigar: Karigar, userId?: string) {
   return {
     id: karigar.id,
-    user_id: userId || null,
+    user_id: karigar.userId || userId || null,
     name: karigar.name,
     hindi_name: karigar.hindiName || karigar.name,
     trade: karigar.trade,
@@ -462,17 +502,56 @@ export const supabaseService = {
   // --------------------------------------------------------------------------
   async fetchBookings(): Promise<BookingRequest[] | null> {
     try {
-      const { data, error } = await supabase
+      const bookingList: BookingRequest[] = [];
+      const seenIds = new Set<string>();
+
+      // 1. Fetch from bookings table
+      const { data: dbBookings } = await supabase
         .from('bookings')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.warn('Supabase fetchBookings notice:', error.message);
-        return null;
+      if (dbBookings && dbBookings.length > 0) {
+        for (const row of dbBookings) {
+          const b = mapDbToBooking(row);
+          if (b && !seenIds.has(b.id)) {
+            seenIds.add(b.id);
+            bookingList.push(b);
+          }
+        }
       }
-      if (data && data.length > 0) {
-        return data.map(mapDbToBooking);
+
+      // 2. Also aggregate direct portfolio inquiries stored on karigars table
+      const { data: kgs } = await supabase.from('karigars').select('*');
+      if (kgs && kgs.length > 0) {
+        for (const kg of kgs) {
+          if (Array.isArray(kg.reviews)) {
+            for (const item of kg.reviews) {
+              if (item && item.type === 'inquiry' && item.id && !seenIds.has(item.id)) {
+                seenIds.add(item.id);
+                bookingList.push({
+                  id: item.id,
+                  karigarId: item.karigarId || kg.id,
+                  karigarName: item.karigarName || kg.name,
+                  karigarTrade: item.karigarTrade || kg.trade,
+                  clientName: item.clientName || 'Client',
+                  clientPhone: item.clientPhone || '',
+                  clientAddress: item.clientAddress || '',
+                  serviceDate: item.serviceDate || '',
+                  jobDescription: item.jobDescription || '',
+                  estimatedBudget: Number(item.estimatedBudget) || 0,
+                  status: item.status || 'pending',
+                  createdAt: item.createdAt || new Date().toISOString(),
+                });
+              }
+            }
+          }
+        }
+      }
+
+      if (bookingList.length > 0) {
+        bookingList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        return bookingList;
       }
       return null;
     } catch (e) {
@@ -483,11 +562,44 @@ export const supabaseService = {
 
   async createBooking(booking: BookingRequest, userId?: string): Promise<boolean> {
     try {
-      const payload = mapBookingToDb(booking, userId);
-      const { error } = await supabase.from('bookings').upsert(payload, { onConflict: 'id' });
-      if (error) {
-        console.warn('Supabase createBooking failed:', error.message);
-        return false;
+      // 1. Save to bookings table (without forcing userId to avoid RLS block on anon client)
+      const payload = mapBookingToDb(booking, null);
+      await supabase.from('bookings').upsert(payload, { onConflict: 'id' });
+
+      // 2. Also attach direct inquiry to the target Karigar's record in Supabase
+      if (booking.karigarId) {
+        const { data: kg } = await supabase
+          .from('karigars')
+          .select('*')
+          .eq('id', booking.karigarId)
+          .single();
+
+        if (kg) {
+          const existingReviews = Array.isArray(kg.reviews) ? kg.reviews : [];
+          const inquiryItem = {
+            id: booking.id,
+            type: 'inquiry',
+            clientName: booking.clientName,
+            clientPhone: booking.clientPhone,
+            clientAddress: booking.clientAddress,
+            serviceDate: booking.serviceDate,
+            jobDescription: booking.jobDescription,
+            estimatedBudget: booking.estimatedBudget,
+            karigarId: booking.karigarId,
+            karigarName: booking.karigarName,
+            karigarTrade: booking.karigarTrade,
+            status: booking.status,
+            createdAt: booking.createdAt,
+          };
+          const filtered = existingReviews.filter((r: any) => r.id !== booking.id);
+          await supabase
+            .from('karigars')
+            .update({
+              reviews: [inquiryItem, ...filtered],
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', kg.id);
+        }
       }
       return true;
     } catch (e) {
@@ -498,17 +610,64 @@ export const supabaseService = {
 
   async updateBookingStatus(bookingId: string, status: BookingRequest['status']): Promise<boolean> {
     try {
-      const { error } = await supabase
+      // 1. Update in bookings table
+      await supabase
         .from('bookings')
         .update({ status, updated_at: new Date().toISOString() })
         .eq('id', bookingId);
-      if (error) {
-        console.warn('Supabase updateBookingStatus failed:', error.message);
-        return false;
+
+      // 2. Update on karigars table if attached in reviews
+      const { data: kgs } = await supabase.from('karigars').select('*');
+      if (kgs) {
+        for (const kg of kgs) {
+          if (Array.isArray(kg.reviews)) {
+            let hasMatch = false;
+            const updatedReviews = kg.reviews.map((r: any) => {
+              if (r.id === bookingId) {
+                hasMatch = true;
+                return { ...r, status };
+              }
+              return r;
+            });
+            if (hasMatch) {
+              await supabase
+                .from('karigars')
+                .update({ reviews: updatedReviews, updated_at: new Date().toISOString() })
+                .eq('id', kg.id);
+            }
+          }
+        }
       }
       return true;
     } catch (e) {
       console.warn('Supabase updateBookingStatus error:', e);
+      return false;
+    }
+  },
+
+  async deleteBooking(bookingId: string): Promise<boolean> {
+    try {
+      // 1. Delete from bookings table
+      await supabase.from('bookings').delete().eq('id', bookingId);
+
+      // 2. Delete from karigars table reviews
+      const { data: kgs } = await supabase.from('karigars').select('*');
+      if (kgs) {
+        for (const kg of kgs) {
+          if (Array.isArray(kg.reviews)) {
+            const filtered = kg.reviews.filter((r: any) => r.id !== bookingId);
+            if (filtered.length !== kg.reviews.length) {
+              await supabase
+                .from('karigars')
+                .update({ reviews: filtered, updated_at: new Date().toISOString() })
+                .eq('id', kg.id);
+            }
+          }
+        }
+      }
+      return true;
+    } catch (e) {
+      console.warn('Supabase deleteBooking error:', e);
       return false;
     }
   },
@@ -548,6 +707,62 @@ export const supabaseService = {
       return true;
     } catch (e) {
       console.warn('Supabase createJobPost error:', e);
+      return false;
+    }
+  },
+
+  async updateJobApplicants(jobId: string, applicants: JobApplicant[]): Promise<boolean> {
+    try {
+      // 1. Fetch current job record to preserve clean description and encode applicants
+      const { data: jobRow } = await supabase
+        .from('job_posts')
+        .select('*')
+        .eq('id', jobId)
+        .single();
+
+      if (jobRow) {
+        const cleanDesc = (jobRow.description || '').replace(/<!--APPLICANTS_DATA:[\s\S]*?-->/g, '').trim();
+        const encodedDesc = applicants.length > 0
+          ? `${cleanDesc}\n\n<!--APPLICANTS_DATA:${JSON.stringify(applicants)}-->`
+          : cleanDesc;
+
+        await supabase
+          .from('job_posts')
+          .update({
+            description: encodedDesc,
+            applicants_count: applicants.length,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', jobId);
+      }
+
+      // 2. Also attempt direct column update if table has applicants column
+      await supabase
+        .from('job_posts')
+        .update({
+          applicants: applicants,
+          applicants_count: applicants.length,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', jobId);
+
+      return true;
+    } catch (e) {
+      console.warn('Supabase updateJobApplicants error:', e);
+      return false;
+    }
+  },
+
+  async deleteJobPost(jobId: string): Promise<boolean> {
+    try {
+      const { error } = await supabase.from('job_posts').delete().eq('id', jobId);
+      if (error) {
+        console.warn('Supabase deleteJobPost failed:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Supabase deleteJobPost error:', e);
       return false;
     }
   },

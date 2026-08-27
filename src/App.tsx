@@ -44,17 +44,20 @@ import {
   Store,
   ArrowLeft,
   LogOut,
-  Loader2
+  Loader2,
+  RotateCw
 } from 'lucide-react';
 
 import {
   Karigar,
   JobPost,
+  JobApplicant,
   BookingRequest,
   Language,
   TradeCategory,
   ReadyProduct,
   ProductOrder,
+  ProductReview,
   ArtisanUserProfile,
   UserProfile,
   UserRole
@@ -70,6 +73,8 @@ import { KarigarCard } from './components/KarigarCard';
 import { KarigarProfileModal } from './components/KarigarProfileModal';
 import { PostJobModal } from './components/PostJobModal';
 import { RegisterKarigarModal } from './components/RegisterKarigarModal';
+import { ApplyJobModal } from './components/ApplyJobModal';
+import { JobApplicantsModal } from './components/JobApplicantsModal';
 import { WageCalculator } from './components/WageCalculator';
 import { BookingsView } from './components/BookingsView';
 import { AddProductWizard } from './components/AddProductWizard';
@@ -84,36 +89,23 @@ import { supabase } from './supabaseClient';
 import { supabaseService } from './services/supabaseService';
 import { safeGetItem, safeSetItem } from './utils/safeStorage';
 
-const INITIAL_BOOKINGS: BookingRequest[] = [
-  {
-    id: 'bk-1',
-    karigarId: 'k-1',
-    karigarName: 'Rameshwar Sharma',
-    karigarTrade: 'handloom',
-    clientName: 'Sanjay Chawla',
-    clientPhone: '+91 98290 11223',
-    clientAddress: 'C-44, Vaishali Nagar, Jaipur',
-    serviceDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
-    jobDescription: 'Custom handloom textile weaving and silk curtain tailoring.',
-    estimatedBudget: 4500,
-    status: 'accepted',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'bk-2',
-    karigarId: 'k-3',
-    karigarName: 'Suresh Kumar Prajapati',
-    karigarTrade: 'pottery',
-    clientName: 'Rajeev Singhal',
-    clientPhone: '+91 98100 44556',
-    clientAddress: 'Tower B, Sector 62, Noida',
-    serviceDate: new Date(Date.now() + 172800000).toISOString().split('T')[0],
-    jobDescription: 'Custom terracotta planter pottery craft for heritage home.',
-    estimatedBudget: 2500,
-    status: 'pending',
-    createdAt: new Date(Date.now() - 3600000 * 3).toISOString(),
-  }
-];
+const INITIAL_BOOKINGS: BookingRequest[] = [];
+
+const MOCK_KARIGAR_IDS = new Set(['k-1', 'k-2', 'k-3', 'k-4', 'k-5', 'k-6', 'k-7', 'k-8', 'k-9', 'k-10']);
+const isGenuineKarigar = (k: Karigar): boolean => {
+  if (!k || !k.id) return false;
+  if (MOCK_KARIGAR_IDS.has(k.id)) return false;
+  if (k.userId === 'mock') return false;
+  return true;
+};
+
+const isGenuineBooking = (b: BookingRequest): boolean => {
+  if (!b || !b.id) return false;
+  if (b.karigarName === 'Rameshwar Sharma') return false;
+  if (b.id === 'bk-1' || b.id === 'bk-2') return false;
+  if (b.karigarId === 'k-1' || b.karigarId === 'k-3') return false;
+  return true;
+};
 
 export default function App() {
   const [language, setLanguage] = useState<Language>('en');
@@ -144,7 +136,8 @@ export default function App() {
 
   // Persistence for karigars, jobs, bookings
   const [karigars, setKarigars] = useState<Karigar[]>(() => {
-    return safeGetItem('ks_karigars', INITIAL_KARIGARS);
+    const saved = safeGetItem<Karigar[]>('ks_karigars', []);
+    return (saved || []).filter(isGenuineKarigar);
   });
 
   const [jobs, setJobs] = useState<JobPost[]>(() => {
@@ -152,7 +145,8 @@ export default function App() {
   });
 
   const [bookings, setBookings] = useState<BookingRequest[]>(() => {
-    return safeGetItem('ks_bookings', INITIAL_BOOKINGS);
+    const saved = safeGetItem<BookingRequest[]>('ks_bookings', []);
+    return (saved || []).filter(isGenuineBooking);
   });
 
   // Fetch or upsert real profile from Supabase
@@ -267,7 +261,8 @@ export default function App() {
       // 3. Fetch Bookings
       const dbBookings = await supabaseService.fetchBookings();
       if (dbBookings && dbBookings.length > 0) {
-        setBookings(dbBookings);
+        const genuineBookings = dbBookings.filter(isGenuineBooking);
+        setBookings(genuineBookings);
       }
 
       // 4. Fetch Job Posts
@@ -279,7 +274,8 @@ export default function App() {
       // 5. Fetch Karigars
       const dbKarigars = await supabaseService.fetchKarigars();
       if (dbKarigars && dbKarigars.length > 0) {
-        setKarigars(dbKarigars);
+        const genuineDbKarigars = dbKarigars.filter(isGenuineKarigar);
+        setKarigars(genuineDbKarigars);
       }
     } catch (err) {
       console.warn('Notice loading Supabase datasets:', err);
@@ -377,6 +373,10 @@ export default function App() {
   const [selectedKarigarForProfile, setSelectedKarigarForProfile] = useState<Karigar | null>(null);
   const [isPostJobOpen, setIsPostJobOpen] = useState(false);
   const [isRegisterKarigarOpen, setIsRegisterKarigarOpen] = useState(false);
+  const [editingKarigar, setEditingKarigar] = useState<Karigar | null>(null);
+  const [selectedJobForApply, setSelectedJobForApply] = useState<JobPost | null>(null);
+  const [selectedJobForApplicants, setSelectedJobForApplicants] = useState<JobPost | null>(null);
+  const [portfolioFilter, setPortfolioFilter] = useState<'all' | 'verified' | 'mine'>('all');
 
   // Filters for Hire Services tab
   const [searchQuery, setSearchQuery] = useState('');
@@ -397,7 +397,10 @@ export default function App() {
   const t = TRANSLATIONS[language];
   const allCities = Array.from(new Set(karigars.map((k) => k.city)));
 
-  // Filtered Karigars
+  // Identify current logged-in user / artisan ID
+  const currentUserId = authUser?.id || artisanProfile.id;
+
+  // Filtered Karigars with portfolioFilter support
   const filteredKarigars = karigars.filter((k) => {
     const matchesSearch =
       k.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -412,18 +415,23 @@ export default function App() {
     const matchesAvailable = availableTodayOnly ? k.isAvailableToday : true;
     const matchesRating = k.rating >= minRating;
 
+    let matchesPortfolioTab = true;
+    if (portfolioFilter === 'mine') {
+      matchesPortfolioTab = k.userId === currentUserId || k.phone === (currentUserProfile?.phone || '');
+    } else if (portfolioFilter === 'verified') {
+      matchesPortfolioTab = k.isAadhaarVerified || k.isSkillCertified;
+    }
+
     return (
       matchesSearch &&
       matchesTrade &&
       matchesCity &&
       matchesVerified &&
       matchesAvailable &&
-      matchesRating
+      matchesRating &&
+      matchesPortfolioTab
     );
   });
-
-  // Identify current logged-in user / artisan ID
-  const currentUserId = authUser?.id || artisanProfile.id;
 
   // Filter products that belong exclusively to this artisan's account for their Artisan Hub & Catalog
   const myArtisanProducts = products.filter(
@@ -548,29 +556,129 @@ export default function App() {
     await supabaseService.updateOrderStatus(orderId, 'cancelled');
   };
 
+  // Real Product Rating Handler - Updates Order + Product Reviews list + Rating score
+  const handleRateProduct = async (
+    orderId: string,
+    productId: string,
+    rating: number,
+    feedback: string
+  ) => {
+    // 1. Update orders state
+    setOrders((prevOrders) =>
+      prevOrders.map((ord) =>
+        ord.id === orderId
+          ? {
+              ...ord,
+              isRated: true,
+              userRating: rating,
+              userReview: feedback,
+            }
+          : ord
+      )
+    );
+
+    // 2. Add real review to product & recompute average rating
+    const reviewerName =
+      currentUserProfile?.full_name ||
+      authUser?.user_metadata?.full_name ||
+      authUser?.user_metadata?.name ||
+      'Verified Buyer';
+
+    const newReview: ProductReview = {
+      id: `rev-${Date.now()}`,
+      author: reviewerName,
+      rating: rating,
+      comment: feedback,
+      date: 'Just now',
+      verifiedBuyer: true,
+      city: currentUserProfile?.city || 'India',
+    };
+
+    setProducts((prevProducts) =>
+      prevProducts.map((p) => {
+        if (p.id === productId) {
+          const existingReviews = p.reviews || [];
+          const updatedReviews = [newReview, ...existingReviews];
+          const totalRating = updatedReviews.reduce((sum, r) => sum + r.rating, 0);
+          const newAvgRating = Number((totalRating / updatedReviews.length).toFixed(1));
+
+          return {
+            ...p,
+            rating: newAvgRating,
+            reviewsCount: updatedReviews.length,
+            reviews: updatedReviews,
+          };
+        }
+        return p;
+      })
+    );
+
+    showToast(
+      language === 'hi'
+        ? 'आपकी रेटिंग और समीक्षा सफलतापूर्वक दर्ज हो गई!'
+        : 'Thank you! Your product rating & review is now live.'
+    );
+  };
+
   // Handlers for Hire & Jobs
   const handleJobPosted = async (newJob: JobPost) => {
-    setJobs([newJob, ...jobs]);
+    const jobWithUser: JobPost = {
+      ...newJob,
+      userId: authUser?.id || currentUserId,
+      posterName: currentUserProfile?.full_name || authUser?.user_metadata?.full_name || 'Client',
+      posterPhone: currentUserProfile?.phone || '',
+      applicants: newJob.applicants || [],
+      applicantsCount: newJob.applicantsCount || 0
+    };
+    setJobs([jobWithUser, ...jobs]);
     showToast(language === 'hi' ? 'काम की आवश्यकता सफलतापूर्वक पोस्ट हुई!' : 'Work requirement posted successfully!');
     setAppMode('hire_services');
     setHireServicesTab('jobs');
 
     // Persist to Supabase
-    await supabaseService.createJobPost(newJob, authUser?.id);
+    await supabaseService.createJobPost(jobWithUser, authUser?.id);
   };
 
   const handleKarigarRegistered = async (newKarigar: Karigar) => {
-    setKarigars([newKarigar, ...karigars]);
+    const karigarWithUser: Karigar = {
+      ...newKarigar,
+      userId: authUser?.id || currentUserId,
+      isUserCreated: true
+    };
+
+    setKarigars((prev) => {
+      const exists = prev.some((k) => k.id === karigarWithUser.id);
+      if (exists) {
+        return prev.map((k) => (k.id === karigarWithUser.id ? karigarWithUser : k));
+      }
+      return [karigarWithUser, ...prev];
+    });
+
     showToast(
       language === 'hi'
-        ? `बधाई! ${newKarigar.name} की कारीगर प्रोफाइल लाइव हो गई है!`
-        : `Congratulations! ${newKarigar.name}'s profile is now live!`
+        ? `बधाई! ${karigarWithUser.name} की कारीगर प्रोफाइल लाइव हो गई है!`
+        : `Congratulations! ${karigarWithUser.name}'s portfolio is now live!`
     );
     setAppMode('hire_services');
     setHireServicesTab('explore');
+    setIsRegisterKarigarOpen(false);
+    setEditingKarigar(null);
 
     // Persist to Supabase
-    await supabaseService.registerKarigar(newKarigar, authUser?.id);
+    await supabaseService.registerKarigar(karigarWithUser, authUser?.id);
+  };
+
+  const handleDeleteKarigar = async (karigarId: string) => {
+    setKarigars((prev) => prev.filter((k) => k.id !== karigarId));
+    showToast(language === 'hi' ? 'प्रोफ़ाइल हटा दी गई' : 'Portfolio removed');
+  };
+
+  const handleClearFakeKarigars = () => {
+    if (confirm('Do you want to clear unverified mock portfolios and keep only real user portfolios?')) {
+      const realOnly = karigars.filter((k) => k.isUserCreated || k.userId);
+      setKarigars(realOnly.length > 0 ? realOnly : INITIAL_KARIGARS.slice(0, 3));
+      showToast('Portfolio list updated');
+    }
   };
 
   const handleBookingCreated = async (bookingData: {
@@ -605,14 +713,99 @@ export default function App() {
     await supabaseService.updateBookingStatus(id, status);
   };
 
-  const handleApplyToJob = async (job: JobPost) => {
-    setJobs(
-      jobs.map((j) => (j.id === job.id ? { ...j, applicantsCount: j.applicantsCount + 1 } : j))
-    );
-    showToast(language === 'hi' ? 'आवेदन भेजा गया! नियोक्ता आपसे संपर्क करेंगे।' : 'Proposal submitted! Client has been notified.');
+  const handleDeleteBooking = async (bookingId: string) => {
+    setBookings((prev) => prev.filter((b) => b.id !== bookingId));
+    showToast(language === 'hi' ? 'बुकिंग हटा दी गई' : 'Booking inquiry removed');
 
     // Persist to Supabase
-    await supabaseService.incrementJobApplicants(job.id, job.applicantsCount);
+    await supabaseService.deleteBooking(bookingId);
+  };
+
+  const handleSubmitJobProposal = async (proposal: Omit<JobApplicant, 'id' | 'appliedAt' | 'status'>) => {
+    if (!selectedJobForApply) return;
+
+    const newApplicant: JobApplicant = {
+      ...proposal,
+      id: `app-${Date.now()}`,
+      applicantUserId: authUser?.id || currentUserProfile?.id,
+      appliedAt: new Date().toISOString(),
+      status: 'pending',
+    };
+
+    let updatedApplicants: JobApplicant[] = [];
+
+    setJobs((prevJobs) =>
+      prevJobs.map((j) => {
+        if (j.id === selectedJobForApply.id) {
+          const currentApplicants = j.applicants || [];
+          updatedApplicants = [newApplicant, ...currentApplicants];
+          return {
+            ...j,
+            applicantsCount: updatedApplicants.length,
+            applicants: updatedApplicants,
+          };
+        }
+        return j;
+      })
+    );
+
+    showToast(
+      language === 'hi'
+        ? 'आवेदन भेजा गया! नियोक्ता आपके प्रस्ताव की समीक्षा करेंगे।'
+        : 'Proposal submitted! The job poster will review your application.'
+    );
+
+    const targetJobId = selectedJobForApply.id;
+    setSelectedJobForApply(null);
+
+    // Persist updated applicants list to Supabase
+    if (updatedApplicants.length > 0) {
+      await supabaseService.updateJobApplicants(targetJobId, updatedApplicants);
+    }
+  };
+
+  const handleUpdateApplicantStatus = async (
+    jobId: string,
+    applicantId: string,
+    status: 'pending' | 'accepted' | 'rejected'
+  ) => {
+    let updatedApplicants: JobApplicant[] = [];
+
+    setJobs((prevJobs) =>
+      prevJobs.map((j) => {
+        if (j.id === jobId) {
+          updatedApplicants = (j.applicants || []).map((app) =>
+            app.id === applicantId ? { ...app, status } : app
+          );
+          return {
+            ...j,
+            applicants: updatedApplicants,
+          };
+        }
+        return j;
+      })
+    );
+
+    if (selectedJobForApplicants && selectedJobForApplicants.id === jobId) {
+      setSelectedJobForApplicants((prev) => {
+        if (!prev) return null;
+        const updated = (prev.applicants || []).map((app) =>
+          app.id === applicantId ? { ...app, status } : app
+        );
+        return { ...prev, applicants: updated };
+      });
+    }
+
+    showToast(
+      status === 'accepted'
+        ? 'Applicant accepted! You can now call or message them on WhatsApp.'
+        : `Applicant marked as ${status.toUpperCase()}`
+    );
+
+    // Persist updated applicant status to Supabase
+    if (updatedApplicants.length > 0) {
+      await supabaseService.updateJobApplicants(jobId, updatedApplicants);
+    }
   };
 
   // Auth Loading Splash Screen
@@ -957,8 +1150,11 @@ export default function App() {
             language={language}
             products={products}
             orders={orders}
+            currentUserProfile={currentUserProfile}
+            authUser={authUser}
             onProductOrdered={handleProductOrdered}
             onCancelOrder={handleCancelOrder}
+            onRateProduct={handleRateProduct}
             onSwitchToArtisan={() => {
               setAppMode('artisan_hub');
               setArtisanTab('home');
@@ -1011,14 +1207,77 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Portfolio Actions & Filters Bar */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3.5 sm:p-4 rounded-2xl border border-stone-200 shadow-2xs">
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 no-scrollbar">
+                    <button
+                      onClick={() => setPortfolioFilter('all')}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                        portfolioFilter === 'all'
+                          ? 'bg-[#963E20] text-white'
+                          : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                      }`}
+                    >
+                      {language === 'hi' ? 'सभी कारीगर' : 'All Artisans'} ({karigars.length})
+                    </button>
+                    <button
+                      onClick={() => setPortfolioFilter('mine')}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                        portfolioFilter === 'mine'
+                          ? 'bg-[#963E20] text-white'
+                          : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                      }`}
+                    >
+                      {language === 'hi' ? 'मेरी प्रोफाइल' : 'My Portfolios'} ({karigars.filter((k) => k.userId === currentUserId || k.phone === (currentUserProfile?.phone || '')).length})
+                    </button>
+                    <button
+                      onClick={() => setPortfolioFilter('verified')}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                        portfolioFilter === 'verified'
+                          ? 'bg-[#963E20] text-white'
+                          : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                      }`}
+                    >
+                      {language === 'hi' ? 'सत्यापित कारीगर' : 'NSDC Verified'}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={async () => {
+                        const dbKarigars = await supabaseService.fetchKarigars();
+                        if (dbKarigars && dbKarigars.length > 0) {
+                          setKarigars(dbKarigars.filter(isGenuineKarigar));
+                          showToast(language === 'hi' ? 'कारीगर प्रोफाइल सिंक हो गई!' : 'Portfolios refreshed from database!');
+                        }
+                      }}
+                      className="px-3 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title={language === 'hi' ? 'डेटाबेस से रिफ्रेश करें' : 'Refresh from database'}
+                    >
+                      <RotateCw className="w-3.5 h-3.5" />
+                      <span>{language === 'hi' ? 'रिफ्रेश' : 'Refresh'}</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingKarigar(null);
+                        setIsRegisterKarigarOpen(true);
+                      }}
+                      className="w-full sm:w-auto px-4 py-2 bg-[#963E20] hover:bg-[#80341A] text-white text-xs font-bold rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      <span>{language === 'hi' ? 'अपनी कारीगर प्रोफाइल बनाएं' : 'Create Your Portfolio'}</span>
+                    </button>
+                  </div>
+                </div>
+
                 {/* Trade filters */}
                 <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
                   <button
                     onClick={() => setSelectedTrade('all')}
-                    className={`px-4 py-2 rounded-2xl text-xs font-bold whitespace-nowrap border ${
+                    className={`px-4 py-2 rounded-2xl text-xs font-bold whitespace-nowrap border cursor-pointer ${
                       selectedTrade === 'all'
                         ? 'bg-[#963E20] text-white border-[#80341A]'
-                        : 'bg-white text-stone-700 border-stone-200'
+                        : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
                     }`}
                   >
                     All Trades ({karigars.length})
@@ -1027,10 +1286,10 @@ export default function App() {
                     <button
                       key={key}
                       onClick={() => setSelectedTrade(key)}
-                      className={`px-4 py-2 rounded-2xl text-xs font-bold whitespace-nowrap border ${
+                      className={`px-4 py-2 rounded-2xl text-xs font-bold whitespace-nowrap border cursor-pointer ${
                         selectedTrade === key
                           ? 'bg-[#963E20] text-white border-[#80341A]'
-                          : 'bg-white text-stone-700 border-stone-200'
+                          : 'bg-white text-stone-700 border-stone-200 hover:bg-stone-50'
                       }`}
                     >
                       {language === 'hi' ? item.nameHi : item.nameEn}
@@ -1039,56 +1298,184 @@ export default function App() {
                 </div>
 
                 {/* Karigars Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filteredKarigars.map((karigar) => (
-                    <KarigarCard
-                      key={karigar.id}
-                      karigar={karigar}
-                      language={language}
-                      onViewProfile={setSelectedKarigarForProfile}
-                      onRequestBooking={(k) => setSelectedKarigarForProfile(k)}
-                    />
-                  ))}
-                </div>
+                {filteredKarigars.length === 0 ? (
+                  <div className="bg-white rounded-3xl p-10 sm:p-14 text-center border border-stone-200 space-y-4 shadow-2xs max-w-2xl mx-auto my-6">
+                    <div className="w-16 h-16 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto text-[#963E20]">
+                      <Users className="w-8 h-8 text-[#963E20]" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <h3 className="font-bold text-stone-900 text-lg">
+                        {language === 'hi' ? 'कोई कारीगर प्रोफाइल नहीं मिली' : 'No Artisan Portfolios Found'}
+                      </h3>
+                      <p className="text-xs sm:text-sm text-stone-500 max-w-md mx-auto leading-relaxed">
+                        {language === 'hi'
+                          ? 'सभी नकली व डमी प्रोफाइल हटा दी गई हैं। अपनी प्रामाणिक कारीगर प्रोफाइल बनाएं ताकि ग्राहक और व्यवसाय आपको सीधे काम दे सकें।'
+                          : 'All mock and unverified placeholder portfolios have been cleared. Register your genuine artisan portfolio with your real craft skills, daily wages, and photos to get hired directly!'}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setEditingKarigar(null);
+                        setIsRegisterKarigarOpen(true);
+                      }}
+                      className="px-6 py-3 bg-[#963E20] hover:bg-[#80341A] text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs inline-flex items-center gap-2 cursor-pointer transition-colors"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      <span>{language === 'hi' ? 'अपनी प्रोफाइल बनाएं' : 'Create Your Portfolio Now'}</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredKarigars.map((karigar) => {
+                      const isOwner = karigar.userId === currentUserId || karigar.phone === (currentUserProfile?.phone || '');
+                      return (
+                        <KarigarCard
+                          key={karigar.id}
+                          karigar={karigar}
+                          language={language}
+                          isOwner={isOwner}
+                          onViewProfile={setSelectedKarigarForProfile}
+                          onRequestBooking={(k) => setSelectedKarigarForProfile(k)}
+                          onEditPortfolio={(k) => {
+                            setEditingKarigar(k);
+                            setIsRegisterKarigarOpen(true);
+                          }}
+                          onDeletePortfolio={(id) => handleDeleteKarigar(id)}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
             {hireServicesTab === 'jobs' && (
               <div className="space-y-4">
-                <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-stone-200">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-stone-200">
                   <div>
-                    <h3 className="font-bold text-stone-900">Work Requirements</h3>
-                    <p className="text-xs text-stone-500">Post a job or view local assignments</p>
+                    <h3 className="font-bold text-stone-900 text-base">Work Requirements & Job Listings</h3>
+                    <p className="text-xs text-stone-500">
+                      Post an assignment, apply with your custom proposal rate, or manage & accept applicants
+                    </p>
                   </div>
                   <button
                     onClick={() => setIsPostJobOpen(true)}
-                    className="px-4 py-2 rounded-xl bg-[#963E20] text-white text-xs font-bold flex items-center gap-1.5"
+                    className="px-4 py-2.5 rounded-xl bg-[#963E20] hover:bg-[#80341A] text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Post Requirement</span>
                   </button>
                 </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {jobs.map((job) => (
-                    <div key={job.id} className="bg-white p-5 rounded-2xl border border-stone-200 space-y-3">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h4 className="font-bold text-stone-900">{job.title}</h4>
-                          <p className="text-xs text-stone-500">{job.city} • {job.locality}</p>
+                  {jobs.map((job) => {
+                    const isPoster =
+                      Boolean(authUser?.id && (job.userId === authUser.id || job.postedByUserId === authUser.id)) ||
+                      Boolean(currentUserId && (job.userId === currentUserId || job.postedByUserId === currentUserId)) ||
+                      Boolean(currentUserProfile?.phone && job.clientPhone && job.clientPhone.replace(/\D/g, '') === currentUserProfile.phone.replace(/\D/g, ''));
+
+                    const applicants = job.applicants || [];
+                    const pendingCount = applicants.filter((a) => a.status === 'pending').length;
+                    const acceptedCount = applicants.filter((a) => a.status === 'accepted').length;
+
+                    const myApplication = applicants.find((a) => {
+                      if (authUser?.id && a.applicantUserId === authUser.id) return true;
+                      if (currentUserId && a.applicantUserId === currentUserId) return true;
+                      if (currentUserProfile?.phone && a.applicantPhone && a.applicantPhone.replace(/\D/g, '') === currentUserProfile.phone.replace(/\D/g, '')) return true;
+                      return false;
+                    });
+
+                    return (
+                      <div key={job.id} className="bg-white p-5 rounded-2xl border border-stone-200 space-y-3 shadow-2xs flex flex-col justify-between">
+                        <div className="space-y-2.5">
+                          <div className="flex justify-between items-start gap-2">
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="font-bold text-stone-900 text-base">{job.title}</h4>
+                                {isPoster && (
+                                  <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-extrabold text-[10px] border border-amber-300">
+                                    Your Job Post
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-stone-500 mt-0.5">{job.city} • {job.locality}</p>
+                            </div>
+                            <span className="px-2.5 py-1 rounded-full bg-amber-50 text-[#963E20] font-extrabold text-xs border border-amber-200/80">
+                              ₹{job.budgetAmount} {job.budgetType === 'daily' ? '/day' : 'total'}
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-stone-600 leading-relaxed line-clamp-3">{job.description}</p>
+
+                          {/* Applicant Status Badges */}
+                          <div className="flex items-center gap-2 pt-1 flex-wrap">
+                            <span className="text-[11px] font-semibold text-stone-500 bg-stone-100 px-2 py-0.5 rounded-md">
+                              👥 {job.applicantsCount || applicants.length} Applicants
+                            </span>
+                            {acceptedCount > 0 && (
+                              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                <span>{acceptedCount} Hired</span>
+                              </span>
+                            )}
+                            {pendingCount > 0 && (
+                              <span className="text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md">
+                                {pendingCount} Pending Review
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <span className="px-2.5 py-1 rounded-full bg-amber-100 text-[#963E20] font-bold text-xs">
-                          ₹{job.budgetAmount}
-                        </span>
+
+                        {/* Action Buttons with Strict Role Permissions */}
+                        <div className="pt-3 border-t border-stone-100 flex items-center gap-2">
+                          {isPoster ? (
+                            // Only Job Poster can view applicants and accept/reject them
+                            <button
+                              onClick={() => setSelectedJobForApplicants(job)}
+                              className="w-full py-2.5 rounded-xl bg-[#963E20] hover:bg-[#80341A] text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                            >
+                              <Users className="w-4 h-4" />
+                              <span>Manage & Review Applicants ({job.applicantsCount || applicants.length})</span>
+                            </button>
+                          ) : myApplication ? (
+                            // User has already applied: Show their specific proposal status without admin accept/reject buttons
+                            <div className="w-full py-2.5 px-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-950 font-bold text-xs flex items-center justify-between">
+                              <span className="flex items-center gap-1.5">
+                                {myApplication.status === 'accepted' ? (
+                                  <>
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                    <span className="text-emerald-800">🎉 Proposal Accepted & Hired!</span>
+                                  </>
+                                ) : myApplication.status === 'rejected' ? (
+                                  <>
+                                    <X className="w-4 h-4 text-rose-500" />
+                                    <span className="text-stone-600">Proposal Not Selected</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Clock className="w-4 h-4 text-amber-600" />
+                                    <span>Proposal Submitted (Under Review)</span>
+                                  </>
+                                )}
+                              </span>
+                              <span className="text-[10px] text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-md font-semibold">
+                                ₹{myApplication.proposedRate}
+                              </span>
+                            </div>
+                          ) : (
+                            // User hasn't applied yet: Show Apply button
+                            <button
+                              onClick={() => setSelectedJobForApply(job)}
+                              className="w-full py-2.5 rounded-xl bg-[#963E20] hover:bg-[#80341A] text-white font-bold text-xs transition-colors flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                            >
+                              <Briefcase className="w-4 h-4" />
+                              <span>Apply for Job / प्रस्ताव भेजें</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-xs text-stone-600 leading-relaxed">{job.description}</p>
-                      <button
-                        onClick={() => handleApplyToJob(job)}
-                        className="w-full py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs transition-colors"
-                      >
-                        Apply for this Job ({job.applicantsCount} applicants)
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -1102,6 +1489,7 @@ export default function App() {
                 bookings={bookings}
                 language={language}
                 onUpdateStatus={handleUpdateBookingStatus}
+                onDeleteBooking={handleDeleteBooking}
               />
             )}
           </div>
@@ -1262,12 +1650,40 @@ export default function App() {
         />
       )}
 
-      {/* 5. Register Karigar Modal */}
+      {/* 5. Register / Edit Karigar Portfolio Modal */}
       {isRegisterKarigarOpen && (
         <RegisterKarigarModal
           language={language}
-          onClose={() => setIsRegisterKarigarOpen(false)}
+          currentUserProfile={currentUserProfile}
+          authUser={authUser}
+          existingKarigar={editingKarigar}
+          onClose={() => {
+            setIsRegisterKarigarOpen(false);
+            setEditingKarigar(null);
+          }}
           onKarigarRegistered={handleKarigarRegistered}
+        />
+      )}
+
+      {/* 6. Apply to Job Modal */}
+      {selectedJobForApply && (
+        <ApplyJobModal
+          job={selectedJobForApply}
+          language={language}
+          currentUserProfile={currentUserProfile}
+          authUser={authUser}
+          onClose={() => setSelectedJobForApply(null)}
+          onSubmitProposal={handleSubmitJobProposal}
+        />
+      )}
+
+      {/* 7. Manage Job Applicants Modal */}
+      {selectedJobForApplicants && (
+        <JobApplicantsModal
+          job={selectedJobForApplicants}
+          language={language}
+          onClose={() => setSelectedJobForApplicants(null)}
+          onUpdateApplicantStatus={handleUpdateApplicantStatus}
         />
       )}
 

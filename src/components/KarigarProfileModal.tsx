@@ -142,12 +142,6 @@ export const KarigarProfileModal: React.FC<KarigarProfileModalProps> = ({
                     <span>{t.aadhaarVerified}</span>
                   </span>
                 )}
-                {karigar.isSkillCertified && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold bg-emerald-500/20 text-emerald-200 border border-emerald-400/30 rounded-md backdrop-blur-xs">
-                    <Award className="w-3.5 h-3.5 text-emerald-300" />
-                    <span>{t.skillCertified}</span>
-                  </span>
-                )}
               </div>
 
               <p className="text-amber-100 text-sm font-medium mt-1">
