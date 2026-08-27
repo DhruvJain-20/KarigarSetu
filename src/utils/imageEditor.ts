@@ -277,6 +277,7 @@ export async function removeImageBackground(
 
     // Config options - use standard isnet_fp16 or default for full accuracy & complete background eradication
     const config: Config = {
+      publicPath: 'https://staticimgly.com/@imgly/background-removal-data/1.7.0/dist/',
       model: 'isnet_fp16',
       progress: (key: string, current: number, total: number) => {
         if (total > 0) {
