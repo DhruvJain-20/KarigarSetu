@@ -133,7 +133,7 @@ export function OrdersManagementView({
       <div className="space-y-4">
         {filteredOrders.map((order) => {
           const stepIndex = getStatusStepIndex(order.status);
-          const initialLetter = order.buyerName.charAt(0).toUpperCase();
+          const initialLetter = (order.buyerName || 'B').trim().charAt(0).toUpperCase() || 'B';
 
           return (
             <div
@@ -290,7 +290,7 @@ export function OrdersManagementView({
 
             <div className="text-center py-2 space-y-1">
               <div className="w-16 h-16 rounded-full bg-amber-100 text-[#963E20] font-bold text-2xl flex items-center justify-center mx-auto mb-2">
-                {callingOrder.buyerName.charAt(0)}
+                {(callingOrder.buyerName || 'B').trim().charAt(0).toUpperCase() || 'B'}
               </div>
               <h4 className="font-bold text-stone-900 text-lg">{callingOrder.buyerName}</h4>
               <p className="text-sm font-bold text-stone-700">{callingOrder.buyerPhone}</p>

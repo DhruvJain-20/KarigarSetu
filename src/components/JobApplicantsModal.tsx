@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   CheckCircle2,
@@ -40,7 +40,11 @@ export const JobApplicantsModal: React.FC<JobApplicantsModalProps> = ({
 }) => {
   const [filter, setFilter] = useState<'all' | 'pending' | 'accepted' | 'rejected'>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const applicants = job.applicants || [];
+  const [localApplicants, setLocalApplicants] = useState<JobApplicant[]>(job.applicants || []);
+
+  useEffect(() => {
+    setLocalApplicants(job.applicants || []);
+  }, [job.applicants]);
 
   const handleRefresh = async () => {
     if (onRefresh) {
@@ -50,14 +54,21 @@ export const JobApplicantsModal: React.FC<JobApplicantsModalProps> = ({
     }
   };
 
-  const filteredApplicants = applicants.filter((a) => {
+  const handleStatusChange = (applicantId: string, newStatus: 'pending' | 'accepted' | 'rejected') => {
+    setLocalApplicants((prev) =>
+      prev.map((a) => (a.id === applicantId ? { ...a, status: newStatus } : a))
+    );
+    onUpdateApplicantStatus(job.id, applicantId, newStatus);
+  };
+
+  const filteredApplicants = localApplicants.filter((a) => {
     if (filter === 'all') return true;
     return a.status === filter;
   });
 
-  const pendingCount = applicants.filter((a) => a.status === 'pending').length;
-  const acceptedCount = applicants.filter((a) => a.status === 'accepted').length;
-  const rejectedCount = applicants.filter((a) => a.status === 'rejected').length;
+  const pendingCount = localApplicants.filter((a) => a.status === 'pending').length;
+  const acceptedCount = localApplicants.filter((a) => a.status === 'accepted').length;
+  const rejectedCount = localApplicants.filter((a) => a.status === 'rejected').length;
 
   const handleCall = (phone: string) => {
     window.location.href = `tel:${phone.replace(/\s+/g, '')}`;
@@ -112,7 +123,7 @@ export const JobApplicantsModal: React.FC<JobApplicantsModalProps> = ({
                   : 'bg-white text-stone-700 border border-stone-200 hover:bg-stone-100'
               }`}
             >
-              All ({applicants.length})
+              All ({localApplicants.length})
             </button>
             <button
               onClick={() => setFilter('pending')}
@@ -291,8 +302,8 @@ export const JobApplicantsModal: React.FC<JobApplicantsModalProps> = ({
                       {/* Accept / Reject controls */}
                       {applicant.status !== 'accepted' && (
                         <button
-                          onClick={() => onUpdateApplicantStatus(job.id, applicant.id, 'accepted')}
-                          className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors"
+                          onClick={() => handleStatusChange(applicant.id, 'accepted')}
+                          className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5" />
                           <span>Accept</span>
@@ -301,8 +312,8 @@ export const JobApplicantsModal: React.FC<JobApplicantsModalProps> = ({
 
                       {applicant.status !== 'rejected' && (
                         <button
-                          onClick={() => onUpdateApplicantStatus(job.id, applicant.id, 'rejected')}
-                          className="px-3.5 py-2 rounded-xl bg-red-100 hover:bg-red-200 text-red-700 text-xs font-bold flex items-center gap-1.5 transition-colors"
+                          onClick={() => handleStatusChange(applicant.id, 'rejected')}
+                          className="px-3.5 py-2 rounded-xl bg-red-100 hover:bg-red-200 text-red-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                         >
                           <XCircle className="w-3.5 h-3.5" />
                           <span>Reject</span>

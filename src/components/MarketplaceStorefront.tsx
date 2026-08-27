@@ -372,7 +372,7 @@ export function MarketplaceStorefront({
                     {/* Artisan line */}
                     <div className="pt-1 flex items-center gap-2 text-xs text-stone-700">
                       <div className="w-5 h-5 rounded-full bg-[#963E20] text-white flex items-center justify-center text-[10px] font-bold">
-                        {product.artisanName.charAt(0)}
+                        {(product.artisanName || 'A').charAt(0).toUpperCase()}
                       </div>
                       <span className="font-medium truncate">{product.artisanName}</span>
                       <span className="text-stone-400">•</span>

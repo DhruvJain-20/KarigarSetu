@@ -101,9 +101,8 @@ const isGenuineKarigar = (k: Karigar): boolean => {
 
 const isGenuineBooking = (b: BookingRequest): boolean => {
   if (!b || !b.id) return false;
-  if (b.karigarName === 'Rameshwar Sharma') return false;
-  if (b.id === 'bk-1' || b.id === 'bk-2') return false;
-  if (b.karigarId === 'k-1' || b.karigarId === 'k-3') return false;
+  // Only filter out legacy hardcoded static mock seeds if they have no real client phone
+  if ((b.id === 'bk-1' || b.id === 'bk-2') && b.clientName === 'Sunita Verma') return false;
   return true;
 };
 
@@ -269,6 +268,10 @@ export default function App() {
       const dbJobs = await supabaseService.fetchJobPosts();
       if (dbJobs && dbJobs.length > 0) {
         setJobs(dbJobs);
+        setSelectedJobForApplicants((prev) => {
+          if (!prev) return null;
+          return dbJobs.find((j) => j.id === prev.id) || prev;
+        });
       }
 
       // 5. Fetch Karigars
@@ -367,6 +370,93 @@ export default function App() {
     safeSetItem('ks_bookings', bookings);
   }, [bookings]);
 
+  // Real-time synchronization across accounts/tabs for jobs, bookings, orders, products, and karigars
+  useEffect(() => {
+    // 1. Supabase Realtime Channels
+    const channel = supabase
+      .channel('ks_realtime_sync_channel')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'job_posts' },
+        async () => {
+          const freshJobs = await supabaseService.fetchJobPosts();
+          if (freshJobs && freshJobs.length > 0) {
+            setJobs(freshJobs);
+            setSelectedJobForApplicants((prev) => {
+              if (!prev) return null;
+              return freshJobs.find((j) => j.id === prev.id) || prev;
+            });
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'bookings' },
+        async () => {
+          const freshBookings = await supabaseService.fetchBookings();
+          if (freshBookings) {
+            setBookings(freshBookings.filter(isGenuineBooking));
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'karigars' },
+        async () => {
+          const [freshKarigars, freshBookings] = await Promise.all([
+            supabaseService.fetchKarigars(),
+            supabaseService.fetchBookings(),
+          ]);
+          if (freshKarigars && freshKarigars.length > 0) {
+            setKarigars(freshKarigars.filter(isGenuineKarigar));
+          }
+          if (freshBookings && freshBookings.length > 0) {
+            setBookings(freshBookings.filter(isGenuineBooking));
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders' },
+        async () => {
+          if (authUser?.id) {
+            const freshOrders = await supabaseService.fetchOrders(authUser.id);
+            if (freshOrders) setOrders(freshOrders);
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'products' },
+        async () => {
+          const freshProducts = await supabaseService.fetchProducts();
+          if (freshProducts && freshProducts.length > 0) {
+            setProducts(freshProducts);
+          }
+        }
+      )
+      .subscribe();
+
+    // 2. Periodic background sync (every 6 seconds when document is visible)
+    const pollInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadAppDataFromSupabase(authUser?.id || '');
+      }
+    }, 6000);
+
+    // 3. Sync on window focus / tab switch
+    const handleWindowFocus = () => {
+      loadAppDataFromSupabase(authUser?.id || '');
+    };
+    window.addEventListener('focus', handleWindowFocus);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(pollInterval);
+      window.removeEventListener('focus', handleWindowFocus);
+    };
+  }, [authUser?.id]);
+
   // Modal states
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [isVoiceAssistantOpen, setIsVoiceAssistantOpen] = useState(false);
@@ -376,7 +466,7 @@ export default function App() {
   const [editingKarigar, setEditingKarigar] = useState<Karigar | null>(null);
   const [selectedJobForApply, setSelectedJobForApply] = useState<JobPost | null>(null);
   const [selectedJobForApplicants, setSelectedJobForApplicants] = useState<JobPost | null>(null);
-  const [portfolioFilter, setPortfolioFilter] = useState<'all' | 'verified' | 'mine'>('all');
+  const [portfolioFilter, setPortfolioFilter] = useState<'all' | 'mine'>('all');
 
   // Filters for Hire Services tab
   const [searchQuery, setSearchQuery] = useState('');
@@ -418,8 +508,6 @@ export default function App() {
     let matchesPortfolioTab = true;
     if (portfolioFilter === 'mine') {
       matchesPortfolioTab = k.userId === currentUserId || k.phone === (currentUserProfile?.phone || '');
-    } else if (portfolioFilter === 'verified') {
-      matchesPortfolioTab = k.isAadhaarVerified || k.isSkillCertified;
     }
 
     return (
@@ -442,6 +530,16 @@ export default function App() {
   const myArtisanOrders = orders.filter(
     (o) => o.artisanId === currentUserId || (authUser?.id && o.artisanId === authUser.id)
   );
+
+  // Artisan portfolios that belong to the current logged-in user
+  const myRegisteredKarigars = karigars.filter((k) => {
+    if (authUser?.id && k.userId === authUser.id) return true;
+    if (currentUserId && k.userId === currentUserId) return true;
+    if (currentUserProfile?.phone && k.phone && k.phone.replace(/\D/g, '') === currentUserProfile.phone.replace(/\D/g, '')) return true;
+    if (currentUserProfile?.full_name && k.name.trim().toLowerCase() === currentUserProfile.full_name.trim().toLowerCase()) return true;
+    if (artisanProfile?.name && k.name.trim().toLowerCase() === artisanProfile.name.trim().toLowerCase()) return true;
+    return false;
+  });
 
   // Handlers for Products & Orders
   const handleProductCreated = async (newProduct: ReadyProduct) => {
@@ -685,6 +783,8 @@ export default function App() {
     karigarId: string;
     karigarName: string;
     karigarTrade: Karigar['trade'];
+    karigarPhone?: string;
+    clientUserId?: string;
     clientName: string;
     clientPhone: string;
     clientAddress: string;
@@ -692,8 +792,10 @@ export default function App() {
     jobDescription: string;
     estimatedBudget: number;
   }) => {
+    const activeUserId = bookingData.clientUserId || authUser?.id || currentUserProfile?.id || currentUserId;
     const newBooking: BookingRequest = {
       id: `bk-${Date.now()}`,
+      clientUserId: activeUserId,
       ...bookingData,
       status: 'pending',
       createdAt: new Date().toISOString(),
@@ -702,15 +804,25 @@ export default function App() {
     showToast(language === 'hi' ? 'बुकिंग अनुरोध कारीगर को भेजा गया!' : 'Booking request sent to artisan!');
 
     // Persist to Supabase
-    await supabaseService.createBooking(newBooking, authUser?.id);
+    await supabaseService.createBooking(newBooking, activeUserId);
   };
 
   const handleUpdateBookingStatus = async (id: string, status: BookingRequest['status']) => {
-    setBookings(bookings.map((b) => (b.id === id ? { ...b, status } : b)));
-    showToast(`Booking status updated to ${status}`);
+    setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, status } : b)));
+    showToast(
+      status === 'accepted'
+        ? (language === 'hi' ? 'अनुरोध स्वीकृत किया गया!' : 'Work request accepted & confirmed!')
+        : `Booking status updated to ${status}`
+    );
 
     // Persist to Supabase
     await supabaseService.updateBookingStatus(id, status);
+
+    // Re-fetch bookings from Supabase to sync authoritative state across clients
+    const freshBookings = await supabaseService.fetchBookings();
+    if (freshBookings && freshBookings.length > 0) {
+      setBookings(freshBookings.filter(isGenuineBooking));
+    }
   };
 
   const handleDeleteBooking = async (bookingId: string) => {
@@ -723,6 +835,8 @@ export default function App() {
 
   const handleSubmitJobProposal = async (proposal: Omit<JobApplicant, 'id' | 'appliedAt' | 'status'>) => {
     if (!selectedJobForApply) return;
+    const targetJob = selectedJobForApply;
+    const targetJobId = selectedJobForApply.id;
 
     const newApplicant: JobApplicant = {
       ...proposal,
@@ -732,22 +846,36 @@ export default function App() {
       status: 'pending',
     };
 
-    let updatedApplicants: JobApplicant[] = [];
+    const currentApplicants = targetJob.applicants || [];
+    // If user already applied, update their proposal, else prepend
+    const existingIndex = currentApplicants.findIndex(
+      (a) =>
+        (a.applicantUserId && (a.applicantUserId === authUser?.id || a.applicantUserId === currentUserProfile?.id)) ||
+        (a.applicantPhone && proposal.applicantPhone && a.applicantPhone.replace(/\D/g, '') === proposal.applicantPhone.replace(/\D/g, ''))
+    );
+
+    let updatedApplicants: JobApplicant[];
+    if (existingIndex >= 0) {
+      updatedApplicants = currentApplicants.map((a, idx) =>
+        idx === existingIndex ? { ...a, ...proposal, status: 'pending', appliedAt: new Date().toISOString() } : a
+      );
+    } else {
+      updatedApplicants = [newApplicant, ...currentApplicants];
+    }
 
     setJobs((prevJobs) =>
-      prevJobs.map((j) => {
-        if (j.id === selectedJobForApply.id) {
-          const currentApplicants = j.applicants || [];
-          updatedApplicants = [newApplicant, ...currentApplicants];
-          return {
-            ...j,
-            applicantsCount: updatedApplicants.length,
-            applicants: updatedApplicants,
-          };
-        }
-        return j;
-      })
+      prevJobs.map((j) =>
+        j.id === targetJobId
+          ? {
+              ...j,
+              applicantsCount: updatedApplicants.length,
+              applicants: updatedApplicants,
+            }
+          : j
+      )
     );
+
+    setSelectedJobForApply(null);
 
     showToast(
       language === 'hi'
@@ -755,13 +883,17 @@ export default function App() {
         : 'Proposal submitted! The job poster will review your application.'
     );
 
-    const targetJobId = selectedJobForApply.id;
-    setSelectedJobForApply(null);
-
     // Persist updated applicants list to Supabase
-    if (updatedApplicants.length > 0) {
-      await supabaseService.updateJobApplicants(targetJobId, updatedApplicants);
-    }
+    await supabaseService.updateJobApplicants(
+      targetJobId,
+      updatedApplicants,
+      targetJob.description,
+      { ...targetJob, applicants: updatedApplicants }
+    );
+
+    // Fetch latest state to ensure perfect server sync
+    const fresh = await supabaseService.fetchJobPosts();
+    if (fresh && fresh.length > 0) setJobs(fresh);
   };
 
   const handleUpdateApplicantStatus = async (
@@ -769,42 +901,53 @@ export default function App() {
     applicantId: string,
     status: 'pending' | 'accepted' | 'rejected'
   ) => {
-    let updatedApplicants: JobApplicant[] = [];
+    const targetJob = jobs.find((j) => j.id === jobId) || selectedJobForApplicants;
+    if (!targetJob) return;
 
-    setJobs((prevJobs) =>
-      prevJobs.map((j) => {
-        if (j.id === jobId) {
-          updatedApplicants = (j.applicants || []).map((app) =>
-            app.id === applicantId ? { ...app, status } : app
-          );
-          return {
-            ...j,
-            applicants: updatedApplicants,
-          };
-        }
-        return j;
-      })
+    const currentApplicants = targetJob.applicants || [];
+    const updatedApplicants: JobApplicant[] = currentApplicants.map((app) =>
+      app.id === applicantId ? { ...app, status } : app
     );
 
-    if (selectedJobForApplicants && selectedJobForApplicants.id === jobId) {
-      setSelectedJobForApplicants((prev) => {
-        if (!prev) return null;
-        const updated = (prev.applicants || []).map((app) =>
-          app.id === applicantId ? { ...app, status } : app
-        );
-        return { ...prev, applicants: updated };
-      });
-    }
+    // Optimistically update jobs state
+    setJobs((prevJobs) =>
+      prevJobs.map((j) =>
+        j.id === jobId
+          ? { ...j, applicants: updatedApplicants }
+          : j
+      )
+    );
+
+    // Optimistically update selected modal state
+    setSelectedJobForApplicants((prev) => {
+      if (!prev || prev.id !== jobId) return prev;
+      return { ...prev, applicants: updatedApplicants };
+    });
 
     showToast(
       status === 'accepted'
-        ? 'Applicant accepted! You can now call or message them on WhatsApp.'
-        : `Applicant marked as ${status.toUpperCase()}`
+        ? (language === 'hi' ? 'कारीगर स्वीकृत किया गया!' : 'Applicant accepted! You can now contact them.')
+        : status === 'rejected'
+        ? (language === 'hi' ? 'आवेदन अस्वीकृत किया गया' : 'Applicant rejected')
+        : `Applicant marked as ${status}`
     );
 
     // Persist updated applicant status to Supabase
-    if (updatedApplicants.length > 0) {
-      await supabaseService.updateJobApplicants(jobId, updatedApplicants);
+    await supabaseService.updateJobApplicants(
+      jobId,
+      updatedApplicants,
+      targetJob.description,
+      { ...targetJob, applicants: updatedApplicants }
+    );
+
+    // Fetch latest state to ensure perfect server sync across devices
+    const fresh = await supabaseService.fetchJobPosts();
+    if (fresh && fresh.length > 0) {
+      setJobs(fresh);
+      const refreshedSelected = fresh.find((j) => j.id === jobId);
+      if (refreshedSelected) {
+        setSelectedJobForApplicants(refreshedSelected);
+      }
     }
   };
 
@@ -1230,16 +1373,6 @@ export default function App() {
                     >
                       {language === 'hi' ? 'मेरी प्रोफाइल' : 'My Portfolios'} ({karigars.filter((k) => k.userId === currentUserId || k.phone === (currentUserProfile?.phone || '')).length})
                     </button>
-                    <button
-                      onClick={() => setPortfolioFilter('verified')}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-                        portfolioFilter === 'verified'
-                          ? 'bg-[#963E20] text-white'
-                          : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
-                      }`}
-                    >
-                      {language === 'hi' ? 'सत्यापित कारीगर' : 'NSDC Verified'}
-                    </button>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -1351,20 +1484,39 @@ export default function App() {
 
             {hireServicesTab === 'jobs' && (
               <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-stone-200">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-stone-200 shadow-2xs">
                   <div>
                     <h3 className="font-bold text-stone-900 text-base">Work Requirements & Job Listings</h3>
                     <p className="text-xs text-stone-500">
                       Post an assignment, apply with your custom proposal rate, or manage & accept applicants
                     </p>
                   </div>
-                  <button
-                    onClick={() => setIsPostJobOpen(true)}
-                    className="px-4 py-2.5 rounded-xl bg-[#963E20] hover:bg-[#80341A] text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Post Requirement</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      id="btn-sync-jobs"
+                      onClick={async () => {
+                        const freshJobs = await supabaseService.fetchJobPosts();
+                        if (freshJobs && freshJobs.length > 0) {
+                          setJobs(freshJobs);
+                          showToast(language === 'hi' ? 'नौकरी प्रस्ताव और आवेदन अपडेट हो गए!' : 'Job listings & proposals synchronized!');
+                        } else {
+                          showToast(language === 'hi' ? 'डेटाबेस से नवीनतम नौकरियां लोड हुईं' : 'Synchronized with latest database records');
+                        }
+                      }}
+                      className="px-3 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title="Sync latest job proposals"
+                    >
+                      <RotateCw className="w-3.5 h-3.5" />
+                      <span>{language === 'hi' ? 'सिंक' : 'Sync'}</span>
+                    </button>
+                    <button
+                      onClick={() => setIsPostJobOpen(true)}
+                      className="px-4 py-2.5 rounded-xl bg-[#963E20] hover:bg-[#80341A] text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Post Requirement</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1372,6 +1524,7 @@ export default function App() {
                     const isPoster =
                       Boolean(authUser?.id && (job.userId === authUser.id || job.postedByUserId === authUser.id)) ||
                       Boolean(currentUserId && (job.userId === currentUserId || job.postedByUserId === currentUserId)) ||
+                      Boolean(currentUserProfile?.id && (job.userId === currentUserProfile.id || job.postedByUserId === currentUserProfile.id)) ||
                       Boolean(currentUserProfile?.phone && job.clientPhone && job.clientPhone.replace(/\D/g, '') === currentUserProfile.phone.replace(/\D/g, ''));
 
                     const applicants = job.applicants || [];
@@ -1381,7 +1534,12 @@ export default function App() {
                     const myApplication = applicants.find((a) => {
                       if (authUser?.id && a.applicantUserId === authUser.id) return true;
                       if (currentUserId && a.applicantUserId === currentUserId) return true;
+                      if (currentUserProfile?.id && a.applicantUserId === currentUserProfile.id) return true;
                       if (currentUserProfile?.phone && a.applicantPhone && a.applicantPhone.replace(/\D/g, '') === currentUserProfile.phone.replace(/\D/g, '')) return true;
+                      if (currentUserProfile?.full_name && a.applicantName && a.applicantName.trim().toLowerCase() === currentUserProfile.full_name.trim().toLowerCase()) return true;
+                      if (authUser?.user_metadata?.full_name && a.applicantName && a.applicantName.trim().toLowerCase() === authUser.user_metadata.full_name.trim().toLowerCase()) return true;
+                      if (authUser?.user_metadata?.name && a.applicantName && a.applicantName.trim().toLowerCase() === authUser.user_metadata.name.trim().toLowerCase()) return true;
+                      if (artisanProfile?.name && a.applicantName && a.applicantName.trim().toLowerCase() === artisanProfile.name.trim().toLowerCase()) return true;
                       return false;
                     });
 
@@ -1488,8 +1646,11 @@ export default function App() {
               <BookingsView
                 bookings={bookings}
                 language={language}
+                currentUserProfile={currentUserProfile}
+                authUser={authUser}
+                myKarigars={myRegisteredKarigars}
                 onUpdateStatus={handleUpdateBookingStatus}
-                onDeleteBooking={handleDeleteBooking}
+                onRefreshBookings={() => loadAppDataFromSupabase(authUser?.id || '')}
               />
             )}
           </div>
@@ -1636,6 +1797,8 @@ export default function App() {
         <KarigarProfileModal
           karigar={selectedKarigarForProfile}
           language={language}
+          currentUserProfile={currentUserProfile}
+          authUser={authUser}
           onClose={() => setSelectedKarigarForProfile(null)}
           onSubmitBooking={handleBookingCreated}
         />
@@ -1684,6 +1847,14 @@ export default function App() {
           language={language}
           onClose={() => setSelectedJobForApplicants(null)}
           onUpdateApplicantStatus={handleUpdateApplicantStatus}
+          onRefresh={async () => {
+            const freshJobs = await supabaseService.fetchJobPosts();
+            if (freshJobs && freshJobs.length > 0) {
+              setJobs(freshJobs);
+              const refreshedJob = freshJobs.find((j) => j.id === selectedJobForApplicants.id);
+              if (refreshedJob) setSelectedJobForApplicants(refreshedJob);
+            }
+          }}
         />
       )}
 

@@ -5,6 +5,7 @@ export type UserRole = 'artisan' | 'buyer' | 'admin';
 export interface UserProfile {
   id: string; // Real Supabase Auth UUID
   full_name: string;
+  name?: string;
   email: string;
   role: UserRole;
   language?: Language;
@@ -135,6 +136,7 @@ export interface BookingRequest {
   karigarId: string;
   karigarName: string;
   karigarTrade: TradeCategory;
+  karigarPhone?: string;
   clientUserId?: string;
   clientName: string;
   clientPhone: string;

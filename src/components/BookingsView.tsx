@@ -10,11 +10,9 @@ import {
   XCircle,
   IndianRupee,
   Briefcase,
-  Trash2,
   RotateCw,
   Inbox,
   Send,
-  UserCheck,
   Building
 } from 'lucide-react';
 import { BookingRequest, Language, UserProfile, Karigar } from '../types';
@@ -38,7 +36,6 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
   authUser,
   myKarigars = [],
   onUpdateStatus,
-  onDeleteBooking,
   onRefreshBookings,
 }) => {
   const t = TRANSLATIONS[language];
@@ -46,25 +43,41 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const myPhone = currentUserProfile?.phone?.replace(/\D/g, '') || '';
-  const myName = (currentUserProfile?.name || '').trim().toLowerCase();
+  const myUserId = authUser?.id || currentUserProfile?.id || '';
+  const myPhone = (currentUserProfile?.phone || '').replace(/\D/g, '');
+  const myName = (currentUserProfile?.full_name || currentUserProfile?.name || '').trim().toLowerCase();
+  const myMetaName = (authUser?.user_metadata?.full_name || authUser?.user_metadata?.name || '').trim().toLowerCase();
   const myKarigarIds = new Set(myKarigars.map((k) => k.id));
   const myKarigarNames = new Set(myKarigars.map((k) => k.name.trim().toLowerCase()));
+  const myKarigarPhones = new Set(myKarigars.map((k) => (k.phone || '').replace(/\D/g, '')).filter(Boolean));
+  if (myPhone) myKarigarPhones.add(myPhone);
 
-  // Categorize a booking
+  // Categorize a booking: Incoming for my portfolio
   const isIncomingForMe = (b: BookingRequest) => {
-    if (myKarigarIds.has(b.karigarId)) return true;
-    if (myKarigarNames.has(b.karigarName.trim().toLowerCase())) return true;
-    if (myName && b.karigarName.trim().toLowerCase() === myName) return true;
+    // If I explicitly sent this as a client, it's outgoing, not incoming
+    if (isOutgoingFromMe(b)) return false;
+    
+    // Check if targeted to my Karigar ID or portfolio name or phone
+    if (b.karigarId && myKarigarIds.has(b.karigarId)) return true;
+    if (b.karigarName && myKarigarNames.has(b.karigarName.trim().toLowerCase())) return true;
+    if (myName && b.karigarName && b.karigarName.trim().toLowerCase() === myName) return true;
+    if (myMetaName && b.karigarName && b.karigarName.trim().toLowerCase() === myMetaName) return true;
+    if (myPhone && b.karigarPhone && b.karigarPhone.replace(/\D/g, '') === myPhone) return true;
+    
     return false;
   };
 
+  // Categorize a booking: Sent by me
   const isOutgoingFromMe = (b: BookingRequest) => {
-    const bClientPhone = b.clientPhone.replace(/\D/g, '');
+    if (myUserId && b.clientUserId && b.clientUserId === myUserId) return true;
+    const bClientPhone = (b.clientPhone || '').replace(/\D/g, '');
     if (myPhone && bClientPhone && (bClientPhone.endsWith(myPhone) || myPhone.endsWith(bClientPhone))) {
       return true;
     }
-    if (myName && b.clientName.trim().toLowerCase() === myName) {
+    if (myName && b.clientName && b.clientName.trim().toLowerCase() === myName) {
+      return true;
+    }
+    if (myMetaName && b.clientName && b.clientName.trim().toLowerCase() === myMetaName) {
       return true;
     }
     return false;
@@ -184,7 +197,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
             <Inbox className="w-3.5 h-3.5" />
             <span>{language === 'hi' ? 'मेरे पास आई पूछताछ' : 'Incoming for My Portfolio'}</span>
             {incomingCount > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-900/30 text-white">
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-900/30 text-white font-bold">
                 {incomingCount}
               </span>
             )}
@@ -201,7 +214,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
             <Send className="w-3.5 h-3.5" />
             <span>{language === 'hi' ? 'मेरे भेजे गए अनुरोध' : 'Sent by Me'}</span>
             {outgoingCount > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/20">
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/20 font-bold">
                 {outgoingCount}
               </span>
             )}
@@ -251,10 +264,11 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredBookings.map((b) => {
             const isIncoming = isIncomingForMe(b);
+            const isOutgoing = isOutgoingFromMe(b);
             const badge = getStatusBadge(b.status);
             const BadgeIcon = badge.icon;
             const meta = TRADE_META[b.karigarTrade] || TRADE_META.handloom;
-            const cleanPhone = (isIncoming ? b.clientPhone : b.clientPhone).replace(/\D/g, '');
+            const contactPhone = (isIncoming ? b.clientPhone : (b.karigarPhone || b.clientPhone)).replace(/\D/g, '');
 
             return (
               <div
@@ -346,27 +360,59 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
 
                 {/* Status Selector & Communication Actions */}
                 <div className="pt-3 border-t border-stone-100 flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-semibold text-stone-500">
-                      {language === 'hi' ? 'स्थिति:' : 'Status:'}
-                    </span>
-                    <select
-                      value={b.status}
-                      onChange={(e) => onUpdateStatus(b.id, e.target.value as BookingRequest['status'])}
-                      className="text-xs font-semibold bg-stone-50 border border-stone-200 rounded-lg px-2 py-1 text-stone-800 focus:outline-none cursor-pointer"
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="accepted">Accepted</option>
-                      <option value="in_progress">In Progress</option>
-                      <option value="completed">Completed</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
-                  </div>
+                  {isIncoming ? (
+                    // ONLY the recipient Artisan receiving this inquiry can change the status
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-semibold text-stone-500">
+                        {language === 'hi' ? 'स्थिति अपडेट:' : 'Update Status:'}
+                      </span>
+                      <select
+                        value={b.status}
+                        onChange={(e) => onUpdateStatus(b.id, e.target.value as BookingRequest['status'])}
+                        className="text-xs font-semibold bg-stone-50 border border-stone-200 rounded-lg px-2.5 py-1 text-stone-800 focus:outline-none cursor-pointer hover:bg-stone-100 transition-colors"
+                      >
+                        <option value="pending">Pending Review</option>
+                        <option value="accepted">Accept & Confirm</option>
+                        <option value="in_progress">Work In Progress</option>
+                        <option value="completed">Completed & Paid</option>
+                        <option value="cancelled">Decline / Cancel</option>
+                      </select>
+                    </div>
+                  ) : (
+                    // The client who SENT the request sees the status in clear read-only format
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-medium text-stone-500">
+                        {language === 'hi' ? 'अनुरोध स्थिति:' : 'Request Status:'}
+                      </span>
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${
+                        b.status === 'accepted'
+                          ? 'text-emerald-800 bg-emerald-50 border border-emerald-200'
+                          : b.status === 'cancelled'
+                          ? 'text-red-700 bg-red-50 border border-red-200'
+                          : 'text-amber-800 bg-amber-50 border border-amber-200'
+                      }`}>
+                        {b.status === 'accepted' ? 'Accepted by Artisan' : b.status === 'cancelled' ? 'Declined / Cancelled' : 'Pending Response'}
+                      </span>
+                      {b.status === 'pending' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(language === 'hi' ? 'क्या आप यह सेवा अनुरोध रद्द करना चाहते हैं?' : 'Do you want to cancel this work request?')) {
+                              onUpdateStatus(b.id, 'cancelled');
+                            }
+                          }}
+                          className="text-[10px] text-stone-500 hover:text-red-600 underline cursor-pointer"
+                        >
+                          {language === 'hi' ? 'अनुरोध रद्द करें' : 'Cancel Request'}
+                        </button>
+                      )}
+                    </div>
+                  )}
 
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 ml-auto">
                     {/* Call Button */}
                     <a
-                      href={`tel:${cleanPhone}`}
+                      href={`tel:${contactPhone}`}
                       className="p-2 bg-stone-100 hover:bg-stone-200 text-stone-800 rounded-xl transition-colors"
                       title={language === 'hi' ? 'कॉल करें' : 'Call'}
                     >
@@ -380,7 +426,7 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                         const msg = encodeURIComponent(
                           `Namaste ${recipient} ji! Connecting regarding inquiry #${b.id.slice(0, 8)} for "${b.karigarName}" (${b.karigarTrade}) - Work: ${b.jobDescription}.`
                         );
-                        const phoneParam = cleanPhone ? `${cleanPhone}` : '';
+                        const phoneParam = contactPhone ? `${contactPhone}` : '';
                         window.open(`https://wa.me/${phoneParam}?text=${msg}`, '_blank');
                       }}
                       className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
@@ -388,27 +434,6 @@ export const BookingsView: React.FC<BookingsViewProps> = ({
                       <MessageSquare className="w-3.5 h-3.5" />
                       <span>WhatsApp</span>
                     </button>
-
-                    {/* Delete Option */}
-                    {onDeleteBooking && (
-                      <button
-                        onClick={() => {
-                          if (
-                            confirm(
-                              language === 'hi'
-                                ? 'क्या आप इस पूछताछ को हटाना चाहते हैं?'
-                                : 'Delete this inquiry request from your list?'
-                            )
-                          ) {
-                            onDeleteBooking(b.id);
-                          }
-                        }}
-                        className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition-colors cursor-pointer"
-                        title={language === 'hi' ? 'हटाएं' : 'Delete'}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
                   </div>
                 </div>
               </div>

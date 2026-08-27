@@ -147,6 +147,7 @@ export function mapDbToBooking(row: any): BookingRequest {
     karigarId: row.karigar_id,
     karigarName: row.karigar_name,
     karigarTrade: row.karigar_trade,
+    clientUserId: row.user_id || row.client_user_id || undefined,
     clientName: row.client_name,
     clientPhone: row.client_phone,
     clientAddress: row.client_address,
@@ -164,7 +165,7 @@ export function mapDbToBooking(row: any): BookingRequest {
 export function mapBookingToDb(booking: BookingRequest, userId?: string) {
   return {
     id: booking.id,
-    user_id: userId || null,
+    user_id: booking.clientUserId || userId || null,
     karigar_id: booking.karigarId,
     karigar_name: booking.karigarName,
     karigar_trade: booking.karigarTrade,
@@ -184,28 +185,37 @@ export function mapBookingToDb(booking: BookingRequest, userId?: string) {
  */
 export function mapDbToJobPost(row: any): JobPost {
   let parsedApplicants: JobApplicant[] = [];
-  if (Array.isArray(row.applicants)) {
-    parsedApplicants = row.applicants;
-  } else if (typeof row.applicants === 'string') {
-    try {
-      parsedApplicants = JSON.parse(row.applicants);
-    } catch {
-      parsedApplicants = [];
-    }
-  }
-
   let cleanDescription = row.description || '';
-  // Check if applicants are encoded in description metadata envelope
-  if (parsedApplicants.length === 0 && typeof row.description === 'string') {
+
+  // 1. Check if applicants are encoded in description metadata envelope (which holds freshest status updates)
+  if (typeof row.description === 'string') {
     const match = row.description.match(/<!--APPLICANTS_DATA:([\s\S]*?)-->/);
     if (match) {
       try {
-        parsedApplicants = JSON.parse(match[1]);
+        const descApplicants = JSON.parse(match[1]);
+        if (Array.isArray(descApplicants) && descApplicants.length > 0) {
+          parsedApplicants = descApplicants;
+        }
+      } catch (e) {
+        console.warn('Error parsing applicants from description:', e);
+      }
+    }
+  }
+
+  // 2. Fallback to applicants column if not found in description
+  if (parsedApplicants.length === 0) {
+    if (Array.isArray(row.applicants) && row.applicants.length > 0) {
+      parsedApplicants = row.applicants;
+    } else if (typeof row.applicants === 'string' && row.applicants.trim() !== '' && row.applicants.trim() !== '[]') {
+      try {
+        const jsonApps = JSON.parse(row.applicants);
+        if (Array.isArray(jsonApps)) parsedApplicants = jsonApps;
       } catch {
         parsedApplicants = [];
       }
     }
   }
+
   // Strip metadata envelope from human description
   cleanDescription = cleanDescription.replace(/<!--APPLICANTS_DATA:[\s\S]*?-->/g, '').trim();
 
@@ -502,8 +512,7 @@ export const supabaseService = {
   // --------------------------------------------------------------------------
   async fetchBookings(): Promise<BookingRequest[] | null> {
     try {
-      const bookingList: BookingRequest[] = [];
-      const seenIds = new Set<string>();
+      const bookingMap = new Map<string, BookingRequest>();
 
       // 1. Fetch from bookings table
       const { data: dbBookings } = await supabase
@@ -514,9 +523,8 @@ export const supabaseService = {
       if (dbBookings && dbBookings.length > 0) {
         for (const row of dbBookings) {
           const b = mapDbToBooking(row);
-          if (b && !seenIds.has(b.id)) {
-            seenIds.add(b.id);
-            bookingList.push(b);
+          if (b && b.id) {
+            bookingMap.set(b.id, b);
           }
         }
       }
@@ -527,31 +535,45 @@ export const supabaseService = {
         for (const kg of kgs) {
           if (Array.isArray(kg.reviews)) {
             for (const item of kg.reviews) {
-              if (item && item.type === 'inquiry' && item.id && !seenIds.has(item.id)) {
-                seenIds.add(item.id);
-                bookingList.push({
+              if (item && item.type === 'inquiry' && item.id) {
+                const existing = bookingMap.get(item.id);
+                // Prefer non-pending status if available (e.g. accepted, in_progress, completed, cancelled)
+                let resolvedStatus = item.status || 'pending';
+                if (existing) {
+                  if (existing.status && existing.status !== 'pending') {
+                    resolvedStatus = existing.status;
+                  } else if (item.status && item.status !== 'pending') {
+                    resolvedStatus = item.status;
+                  }
+                }
+
+                const merged: BookingRequest = {
                   id: item.id,
                   karigarId: item.karigarId || kg.id,
                   karigarName: item.karigarName || kg.name,
                   karigarTrade: item.karigarTrade || kg.trade,
-                  clientName: item.clientName || 'Client',
-                  clientPhone: item.clientPhone || '',
-                  clientAddress: item.clientAddress || '',
-                  serviceDate: item.serviceDate || '',
-                  jobDescription: item.jobDescription || '',
-                  estimatedBudget: Number(item.estimatedBudget) || 0,
-                  status: item.status || 'pending',
-                  createdAt: item.createdAt || new Date().toISOString(),
-                });
+                  karigarPhone: item.karigarPhone || kg.phone || existing?.karigarPhone || '',
+                  clientUserId: item.clientUserId || existing?.clientUserId || undefined,
+                  clientName: item.clientName || existing?.clientName || 'Client',
+                  clientPhone: item.clientPhone || existing?.clientPhone || '',
+                  clientAddress: item.clientAddress || existing?.clientAddress || '',
+                  serviceDate: item.serviceDate || existing?.serviceDate || '',
+                  jobDescription: item.jobDescription || existing?.jobDescription || '',
+                  estimatedBudget: Number(item.estimatedBudget) || existing?.estimatedBudget || 0,
+                  status: resolvedStatus,
+                  createdAt: item.createdAt || existing?.createdAt || new Date().toISOString(),
+                };
+                bookingMap.set(item.id, merged);
               }
             }
           }
         }
       }
 
-      if (bookingList.length > 0) {
-        bookingList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        return bookingList;
+      const list = Array.from(bookingMap.values());
+      if (list.length > 0) {
+        list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        return list;
       }
       return null;
     } catch (e) {
@@ -572,13 +594,14 @@ export const supabaseService = {
           .from('karigars')
           .select('*')
           .eq('id', booking.karigarId)
-          .single();
+          .maybeSingle();
 
         if (kg) {
           const existingReviews = Array.isArray(kg.reviews) ? kg.reviews : [];
           const inquiryItem = {
             id: booking.id,
             type: 'inquiry',
+            clientUserId: booking.clientUserId || userId,
             clientName: booking.clientName,
             clientPhone: booking.clientPhone,
             clientAddress: booking.clientAddress,
@@ -588,6 +611,7 @@ export const supabaseService = {
             karigarId: booking.karigarId,
             karigarName: booking.karigarName,
             karigarTrade: booking.karigarTrade,
+            karigarPhone: booking.karigarPhone || kg.phone || '',
             status: booking.status,
             createdAt: booking.createdAt,
           };
@@ -611,21 +635,25 @@ export const supabaseService = {
   async updateBookingStatus(bookingId: string, status: BookingRequest['status']): Promise<boolean> {
     try {
       // 1. Update in bookings table
-      await supabase
+      const { error: bErr } = await supabase
         .from('bookings')
         .update({ status, updated_at: new Date().toISOString() })
         .eq('id', bookingId);
 
-      // 2. Update on karigars table if attached in reviews
+      if (bErr) {
+        console.warn('Supabase updateBookingStatus bookings notice:', bErr.message);
+      }
+
+      // 2. Also update on karigars table if attached in reviews
       const { data: kgs } = await supabase.from('karigars').select('*');
       if (kgs) {
         for (const kg of kgs) {
           if (Array.isArray(kg.reviews)) {
             let hasMatch = false;
             const updatedReviews = kg.reviews.map((r: any) => {
-              if (r.id === bookingId) {
+              if (r && r.id === bookingId) {
                 hasMatch = true;
-                return { ...r, status };
+                return { ...r, status, updatedAt: new Date().toISOString() };
               }
               return r;
             });
@@ -711,22 +739,33 @@ export const supabaseService = {
     }
   },
 
-  async updateJobApplicants(jobId: string, applicants: JobApplicant[]): Promise<boolean> {
+  async updateJobApplicants(
+    jobId: string,
+    applicants: JobApplicant[],
+    fallbackDescription?: string,
+    fullJob?: JobPost
+  ): Promise<boolean> {
     try {
-      // 1. Fetch current job record to preserve clean description and encode applicants
-      const { data: jobRow } = await supabase
+      // 1. Fetch current job record or fallback
+      let cleanDesc = (fallbackDescription || (fullJob ? fullJob.description : '') || '').replace(/<!--APPLICANTS_DATA:[\s\S]*?-->/g, '').trim();
+
+      const { data: jobRow, error: fetchErr } = await supabase
         .from('job_posts')
         .select('*')
         .eq('id', jobId)
-        .single();
+        .maybeSingle();
+
+      if (jobRow && jobRow.description) {
+        cleanDesc = (jobRow.description || '').replace(/<!--APPLICANTS_DATA:[\s\S]*?-->/g, '').trim();
+      }
+
+      const encodedDesc = applicants.length > 0
+        ? `${cleanDesc}\n\n<!--APPLICANTS_DATA:${JSON.stringify(applicants)}-->`
+        : cleanDesc;
 
       if (jobRow) {
-        const cleanDesc = (jobRow.description || '').replace(/<!--APPLICANTS_DATA:[\s\S]*?-->/g, '').trim();
-        const encodedDesc = applicants.length > 0
-          ? `${cleanDesc}\n\n<!--APPLICANTS_DATA:${JSON.stringify(applicants)}-->`
-          : cleanDesc;
-
-        await supabase
+        // Try updating description with encoded applicants & count
+        const { error: err1 } = await supabase
           .from('job_posts')
           .update({
             description: encodedDesc,
@@ -734,17 +773,33 @@ export const supabaseService = {
             updated_at: new Date().toISOString(),
           })
           .eq('id', jobId);
-      }
 
-      // 2. Also attempt direct column update if table has applicants column
-      await supabase
-        .from('job_posts')
-        .update({
-          applicants: applicants,
-          applicants_count: applicants.length,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', jobId);
+        if (err1) {
+          console.warn('Supabase updateJobApplicants description notice:', err1.message);
+        }
+
+        // Also attempt direct column update if table has applicants column
+        try {
+          await supabase
+            .from('job_posts')
+            .update({
+              applicants: applicants,
+              applicants_count: applicants.length,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', jobId);
+        } catch {
+          // column may not exist in standard schema
+        }
+      } else if (fullJob) {
+        // Row not in Supabase yet - upsert entire job post
+        const payload = mapJobPostToDb({
+          ...fullJob,
+          applicants,
+          description: cleanDesc,
+        }, fullJob.userId || fullJob.postedByUserId);
+        await supabase.from('job_posts').upsert(payload, { onConflict: 'id' });
+      }
 
       return true;
     } catch (e) {

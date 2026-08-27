@@ -16,17 +16,21 @@ import {
   Check,
   UserCheck
 } from 'lucide-react';
-import { Karigar, Language } from '../types';
+import { Karigar, Language, UserProfile } from '../types';
 import { TRADE_META, TRANSLATIONS } from '../data/translations';
 
 interface KarigarProfileModalProps {
   karigar: Karigar;
   language: Language;
+  currentUserProfile?: UserProfile | null;
+  authUser?: any;
   onClose: () => void;
   onSubmitBooking: (booking: {
     karigarId: string;
     karigarName: string;
     karigarTrade: Karigar['trade'];
+    karigarPhone?: string;
+    clientUserId?: string;
     clientName: string;
     clientPhone: string;
     clientAddress: string;
@@ -39,18 +43,27 @@ interface KarigarProfileModalProps {
 export const KarigarProfileModal: React.FC<KarigarProfileModalProps> = ({
   karigar,
   language,
+  currentUserProfile,
+  authUser,
   onClose,
   onSubmitBooking,
 }) => {
   const t = TRANSLATIONS[language];
   const meta = TRADE_META[karigar.trade] || TRADE_META.handloom;
 
+  const defaultClientName =
+    currentUserProfile?.full_name ||
+    authUser?.user_metadata?.full_name ||
+    authUser?.user_metadata?.name ||
+    '';
+  const defaultClientPhone = currentUserProfile?.phone || '';
+
   const [activePhoto, setActivePhoto] = useState<string>(
     karigar.portfolioImages?.[0] || karigar.avatarUrl
   );
   const [showBookingForm, setShowBookingForm] = useState(false);
-  const [clientName, setClientName] = useState('');
-  const [clientPhone, setClientPhone] = useState('');
+  const [clientName, setClientName] = useState(defaultClientName);
+  const [clientPhone, setClientPhone] = useState(defaultClientPhone);
   const [clientAddress, setClientAddress] = useState('');
   const [serviceDate, setServiceDate] = useState(
     new Date(Date.now() + 86400000).toISOString().split('T')[0]
@@ -87,12 +100,14 @@ export const KarigarProfileModal: React.FC<KarigarProfileModalProps> = ({
       karigarId: karigar.id,
       karigarName: karigar.name,
       karigarTrade: karigar.trade,
-      clientName,
-      clientPhone,
-      clientAddress,
+      karigarPhone: karigar.phone || karigar.whatsapp || '',
+      clientUserId: authUser?.id || currentUserProfile?.id,
+      clientName: clientName.trim(),
+      clientPhone: clientPhone.trim(),
+      clientAddress: clientAddress.trim(),
       serviceDate,
-      jobDescription,
-      estimatedBudget,
+      jobDescription: jobDescription.trim(),
+      estimatedBudget: Number(estimatedBudget) || 0,
     });
 
     setBookingSuccess(true);
@@ -409,32 +424,42 @@ export const KarigarProfileModal: React.FC<KarigarProfileModalProps> = ({
             </h3>
 
             <div className="space-y-3">
-              {karigar.reviews.map((rev) => (
-                <div key={rev.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-200/70">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-amber-100 text-amber-900 font-bold text-xs flex items-center justify-center">
-                        {rev.author.charAt(0)}
-                      </div>
-                      <div>
-                        <h5 className="text-xs font-bold text-slate-900">{rev.author}</h5>
-                        <span className="text-[10px] text-slate-500">{rev.city}</span>
-                      </div>
-                    </div>
+              {(karigar.reviews || [])
+                .filter((r: any) => r && (r.author || r.clientName) && (!r.type || r.type === 'review'))
+                .map((rev: any, index: number) => {
+                  const authorName = (rev.author || rev.clientName || 'Verified Client').trim();
+                  const initialLetter = authorName ? authorName.charAt(0).toUpperCase() : 'U';
+                  const ratingCount = Math.max(1, Math.min(5, Number(rev.rating) || 5));
 
-                    <div className="flex items-center gap-1">
-                      {[...Array(rev.rating)].map((_, idx) => (
-                        <Star key={idx} className="w-3 h-3 text-amber-500 fill-amber-400" />
-                      ))}
-                      <span className="text-[10px] text-slate-400 ml-1">{rev.date}</span>
-                    </div>
-                  </div>
+                  return (
+                    <div key={rev.id || `rev-${index}`} className="p-4 bg-slate-50 rounded-2xl border border-slate-200/70">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-amber-100 text-amber-900 font-bold text-xs flex items-center justify-center">
+                            {initialLetter}
+                          </div>
+                          <div>
+                            <h5 className="text-xs font-bold text-slate-900">{authorName}</h5>
+                            <span className="text-[10px] text-slate-500">{rev.city || karigar.city || ''}</span>
+                          </div>
+                        </div>
 
-                  <p className="text-xs text-slate-700 leading-relaxed italic">
-                    "{rev.comment}"
-                  </p>
-                </div>
-              ))}
+                        <div className="flex items-center gap-1">
+                          {[...Array(ratingCount)].map((_, idx) => (
+                            <Star key={idx} className="w-3 h-3 text-amber-500 fill-amber-400" />
+                          ))}
+                          <span className="text-[10px] text-slate-400 ml-1">{rev.date || 'Recent'}</span>
+                        </div>
+                      </div>
+
+                      {rev.comment && (
+                        <p className="text-xs text-slate-700 leading-relaxed italic">
+                          "{rev.comment}"
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
             </div>
           </div>
         </div>

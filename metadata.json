@@ -1,8 +1,9 @@
 {
-  "name": "Remix Karigar Setu - कारीगर सेतु",
+  "name": "Karigar Setu - कारीगर सेतु",
   "description": "National platform for Indian artisans and craftsmen to list handcrafted products with AI photo studio, track purchases and live delivery statuses, receive customer orders, manage their artisan profile, and connect with direct buyers and trade clients with 0% middleman commission.",
   "requestFramePermissions": [
-    "camera"
+    "camera",
+    "microphone"
   ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
