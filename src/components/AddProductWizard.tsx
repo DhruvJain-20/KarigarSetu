@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Camera,
   Upload,
@@ -27,6 +27,7 @@ import { ReadyProduct, Language, ArtisanUserProfile } from '../types';
 import { compressImage } from '../utils/imageCompressor';
 import { removeImageBackground, triggerImageDownload, ProcessingProgress } from '../utils/imageEditor';
 import { ImageCropperModal } from './ImageCropperModal';
+import { LiveCameraModal } from './LiveCameraModal';
 
 interface AddProductWizardProps {
   language: Language;
@@ -44,11 +45,10 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
   const [isDraggingSlider, setIsDraggingSlider] = useState(false);
   const sliderContainerRef = useRef<HTMLDivElement>(null);
 
-  // AI Adjustments toggles
+  // AI Adjustments toggles (Sharpen details removed as requested)
   const [aiAdjustments, setAiAdjustments] = useState({
     removeBg: false,
     improveLighting: false,
-    sharpen: false,
   });
 
   // Separate image states
@@ -61,8 +61,9 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
   const [isRemovingBg, setIsRemovingBg] = useState(false);
   const [bgRemovalProgress, setBgRemovalProgress] = useState<ProcessingProgress | null>(null);
 
-  // Cropper modal state
+  // Cropper & Live Camera modals state
   const [isCropperOpen, setIsCropperOpen] = useState(false);
+  const [isLiveCameraOpen, setIsLiveCameraOpen] = useState(false);
 
   // General processing & error states
   const [isProcessingImage, setIsProcessingImage] = useState(false);
@@ -87,6 +88,24 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
   const [isListeningMic, setIsListeningMic] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string>('');
 
+  // Handle image capture from live camera
+  const handleLiveCameraCapture = async (dataUrl: string) => {
+    setIsProcessingImage(true);
+    setStudioErrorMessage('');
+    setValidationError('');
+    try {
+      setOriginalImage(dataUrl);
+      setProductImage(dataUrl);
+      setCroppedImage(null);
+      setBgRemovedImage(null);
+      setAiAdjustments({ removeBg: false, improveLighting: false });
+    } catch (err) {
+      console.error('Failed to set captured image:', err);
+    } finally {
+      setIsProcessingImage(false);
+    }
+  };
+
   // Image Upload handler with instant compression
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -100,7 +119,7 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
         setProductImage(compressed);
         setCroppedImage(null);
         setBgRemovedImage(null);
-        setAiAdjustments({ removeBg: false, improveLighting: false, sharpen: false });
+        setAiAdjustments({ removeBg: false, improveLighting: false });
       } catch (err) {
         console.error('Failed to process image:', err);
         setStudioErrorMessage('Failed to read image file. Please try another image.');
@@ -108,6 +127,8 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
         setIsProcessingImage(false);
       }
     }
+    // Reset input value so same file can be selected again
+    e.target.value = '';
   };
 
   // Real client-side AI background removal (100% Free, browser-based)
@@ -149,7 +170,7 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
     setProductImage(originalImage);
     setCroppedImage(null);
     setBgRemovedImage(null);
-    setAiAdjustments({ removeBg: false, improveLighting: false, sharpen: false });
+    setAiAdjustments({ removeBg: false, improveLighting: false });
     setStudioErrorMessage('');
   };
 
@@ -160,25 +181,46 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
     triggerImageDownload(productImage, `karigar-artisan-craft-${Date.now()}.${isPng ? 'png' : 'jpg'}`);
   };
 
-  // Drag slider handler
-  const handleSliderMove = (clientX: number) => {
+  // Global mouse up / touch end listener for smooth slider dragging
+  useEffect(() => {
+    const handleGlobalMouseUp = () => setIsDraggingSlider(false);
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (isDraggingSlider && sliderContainerRef.current) {
+        const rect = sliderContainerRef.current.getBoundingClientRect();
+        const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+        setSliderPosition((x / rect.width) * 100);
+      }
+    };
+    const handleGlobalTouchMove = (e: TouchEvent) => {
+      if (isDraggingSlider && sliderContainerRef.current && e.touches[0]) {
+        const rect = sliderContainerRef.current.getBoundingClientRect();
+        const x = Math.max(0, Math.min(e.touches[0].clientX - rect.left, rect.width));
+        setSliderPosition((x / rect.width) * 100);
+      }
+    };
+
+    if (isDraggingSlider) {
+      window.addEventListener('mousemove', handleGlobalMouseMove);
+      window.addEventListener('mouseup', handleGlobalMouseUp);
+      window.addEventListener('touchmove', handleGlobalTouchMove, { passive: true });
+      window.addEventListener('touchend', handleGlobalMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalMouseMove);
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
+      window.removeEventListener('touchmove', handleGlobalTouchMove);
+      window.removeEventListener('touchend', handleGlobalMouseUp);
+    };
+  }, [isDraggingSlider]);
+
+  // Click or drag on slider container
+  const handleSliderPointerDown = (clientX: number) => {
+    setIsDraggingSlider(true);
     if (!sliderContainerRef.current) return;
     const rect = sliderContainerRef.current.getBoundingClientRect();
     const x = Math.max(0, Math.min(clientX - rect.left, rect.width));
-    const percent = (x / rect.width) * 100;
-    setSliderPosition(percent);
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (isDraggingSlider) {
-      handleSliderMove(e.touches[0].clientX);
-    }
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (isDraggingSlider) {
-      handleSliderMove(e.clientX);
-    }
+    setSliderPosition((x / rect.width) * 100);
   };
 
   // Voice AI simulation
@@ -351,11 +393,11 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      cameraInputRef.current?.click();
+                      setIsLiveCameraOpen(true);
                     }}
-                    className="w-full sm:w-auto flex items-center justify-center gap-2 py-3 px-5 rounded-2xl bg-stone-100 hover:bg-stone-200 border border-stone-300 text-stone-800 font-semibold text-xs transition-colors cursor-pointer"
+                    className="w-full sm:w-auto flex items-center justify-center gap-2 py-3 px-5 rounded-2xl bg-amber-50 hover:bg-amber-100 border border-[#963E20]/30 text-[#963E20] font-bold text-xs transition-colors cursor-pointer shadow-xs"
                   >
-                    <Camera className="w-4 h-4 text-stone-700" />
+                    <Camera className="w-4 h-4 text-[#963E20]" />
                     <span>Take Photo</span>
                   </button>
 
@@ -411,37 +453,35 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
                   </div>
                 )}
 
-                {/* Split Slider Preview */}
+                {/* Split Slider Preview - Fully smooth drag with zero image dragging/ghosting */}
                 <div
                   ref={sliderContainerRef}
-                  className="relative w-full h-64 sm:h-72 rounded-3xl overflow-hidden select-none border border-stone-300 shadow-md cursor-ew-resize bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:16px_16px] bg-stone-100"
-                  onMouseDown={() => setIsDraggingSlider(true)}
-                  onMouseUp={() => setIsDraggingSlider(false)}
-                  onMouseLeave={() => setIsDraggingSlider(false)}
-                  onMouseMove={handleMouseMove}
-                  onTouchStart={() => setIsDraggingSlider(true)}
-                  onTouchEnd={() => setIsDraggingSlider(false)}
-                  onTouchMove={handleTouchMove}
+                  className="relative w-full h-64 sm:h-72 rounded-3xl overflow-hidden select-none border border-stone-300 shadow-md cursor-ew-resize bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:16px_16px] bg-stone-100 touch-none"
+                  onMouseDown={(e) => handleSliderPointerDown(e.clientX)}
+                  onTouchStart={(e) => {
+                    if (e.touches[0]) handleSliderPointerDown(e.touches[0].clientX);
+                  }}
                 >
                   {/* Original Layer */}
-                  <div className="absolute inset-0 flex items-center justify-center bg-stone-900/10">
+                  <div className="absolute inset-0 flex items-center justify-center bg-stone-900/10 pointer-events-none select-none">
                     <img
                       src={originalImage}
                       alt="Original photo"
-                      className="w-full h-full object-contain brightness-95"
+                      draggable={false}
+                      className="w-full h-full object-contain brightness-95 pointer-events-none select-none"
                     />
-                    <span className="absolute top-4 right-4 px-3 py-1 rounded-full bg-stone-900/70 backdrop-blur text-white text-xs font-semibold shadow-xs">
+                    <span className="absolute top-4 right-4 px-3 py-1 rounded-full bg-stone-900/70 backdrop-blur text-white text-xs font-semibold shadow-xs pointer-events-none">
                       Original
                     </span>
                   </div>
 
                   {/* AI Enhanced / Working Layer */}
                   <div
-                    className="absolute inset-0 overflow-hidden bg-[radial-gradient(#94a3b8_1px,transparent_1px)] [background-size:12px_12px] bg-stone-200/50"
+                    className="absolute inset-0 overflow-hidden bg-[radial-gradient(#94a3b8_1px,transparent_1px)] [background-size:12px_12px] bg-stone-200/50 pointer-events-none select-none"
                     style={{ width: `${sliderPosition}%` }}
                   >
                     <div
-                      className="relative h-full flex items-center justify-center"
+                      className="relative h-full flex items-center justify-center pointer-events-none select-none"
                       style={{
                         width: sliderContainerRef.current
                           ? `${sliderContainerRef.current.clientWidth}px`
@@ -451,11 +491,12 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
                       <img
                         src={productImage}
                         alt="Studio working photo"
-                        className={`w-full h-full object-contain ${
+                        draggable={false}
+                        className={`w-full h-full object-contain pointer-events-none select-none ${
                           aiAdjustments.improveLighting ? 'brightness-105 contrast-105 saturate-110' : ''
                         }`}
                       />
-                      <span className="absolute top-4 left-4 px-3 py-1 rounded-full bg-white/95 backdrop-blur text-stone-900 text-xs font-bold shadow-xs flex items-center gap-1">
+                      <span className="absolute top-4 left-4 px-3 py-1 rounded-full bg-white/95 backdrop-blur text-stone-900 text-xs font-bold shadow-xs flex items-center gap-1 pointer-events-none">
                         <Sparkles className="w-3 h-3 text-[#963E20]" />
                         {bgRemovedImage ? 'Transparent PNG' : croppedImage ? 'Cropped' : 'Enhanced'}
                       </span>
@@ -464,18 +505,18 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
 
                   {/* Center Divider Handle Bar */}
                   <div
-                    className="absolute top-0 bottom-0 w-1 bg-white shadow-lg pointer-events-none flex items-center justify-center"
+                    className="absolute top-0 bottom-0 w-1 bg-white shadow-lg pointer-events-none flex items-center justify-center z-10"
                     style={{ left: `${sliderPosition}%`, transform: 'translateX(-50%)' }}
                   >
-                    <div className="w-8 h-8 rounded-full bg-white text-stone-700 shadow-md flex items-center justify-center text-xs font-bold border border-stone-200">
+                    <div className="w-8 h-8 rounded-full bg-white text-stone-700 shadow-md flex items-center justify-center text-xs font-bold border border-stone-200 pointer-events-none">
                       ‹›
                     </div>
                   </div>
 
                   {/* Bottom pill message */}
-                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3.5 py-1.5 rounded-full bg-stone-900/80 backdrop-blur text-white text-[11px] font-medium flex items-center gap-1.5 shadow-md">
+                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3.5 py-1.5 rounded-full bg-stone-900/80 backdrop-blur text-white text-[11px] font-medium flex items-center gap-1.5 shadow-md pointer-events-none">
                     <Sparkles className="w-3 h-3 text-amber-300" />
-                    <span>Slide to compare Before & After</span>
+                    <span>Slide smoothly to compare Before & After</span>
                   </div>
                 </div>
 
@@ -544,7 +585,7 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
                     </button>
                   </div>
 
-                  {/* Secondary Lighting & Sharpening Toggles */}
+                  {/* Secondary Lighting Toggle (Sharpen details removed) */}
                   <div className="flex flex-wrap gap-2 pt-1">
                     <button
                       type="button"
@@ -563,24 +604,17 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
                       <Sparkles className="w-3 h-3" />
                       Studio Lighting
                     </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setAiAdjustments((prev) => ({ ...prev, sharpen: !prev.sharpen }))
-                      }
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all border cursor-pointer ${
-                        aiAdjustments.sharpen
-                          ? 'bg-[#D1EBE1] text-[#1D5C4A] border-[#A8D8C7]'
-                          : 'bg-stone-100 text-stone-600 border-stone-200'
-                      }`}
-                    >
-                      <Layers className="w-3 h-3" />
-                      Sharpen Details
-                    </button>
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* Live Camera Modal */}
+            {isLiveCameraOpen && (
+              <LiveCameraModal
+                onCapture={handleLiveCameraCapture}
+                onClose={() => setIsLiveCameraOpen(false)}
+              />
             )}
 
             {/* Image Cropper Modal */}
@@ -627,15 +661,26 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
               </button>
 
               {productImage && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    fileInputRef.current?.click();
-                  }}
-                  className="w-full py-3.5 rounded-2xl bg-white hover:bg-stone-50 border border-stone-300 text-stone-800 font-semibold text-sm transition-colors cursor-pointer"
-                >
-                  Change Photo
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsLiveCameraOpen(true)}
+                    className="py-3 px-4 rounded-2xl bg-amber-50 hover:bg-amber-100 border border-[#963E20]/30 text-[#963E20] font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <Camera className="w-4 h-4" />
+                    <span>Retake Photo</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      fileInputRef.current?.click();
+                    }}
+                    className="py-3 px-4 rounded-2xl bg-white hover:bg-stone-50 border border-stone-300 text-stone-800 font-semibold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>Choose File</span>
+                  </button>
+                </div>
               )}
             </div>
           </div>
