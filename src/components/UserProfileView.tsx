@@ -26,11 +26,13 @@ import {
   LogOut,
   PlusCircle
 } from 'lucide-react';
-import { ArtisanUserProfile, Language } from '../types';
+import { ArtisanUserProfile, Language, ReadyProduct, ProductOrder } from '../types';
 
 interface UserProfileViewProps {
   language: Language;
   profile: ArtisanUserProfile;
+  products?: ReadyProduct[];
+  orders?: ProductOrder[];
   onUpdateProfile: (updated: ArtisanUserProfile) => void;
   onToggleLanguage: () => void;
   onOpenVoiceAssistant: () => void;
@@ -42,6 +44,8 @@ interface UserProfileViewProps {
 export function UserProfileView({
   language,
   profile,
+  products = [],
+  orders = [],
   onUpdateProfile,
   onToggleLanguage,
   onOpenVoiceAssistant,
@@ -50,6 +54,17 @@ export function UserProfileView({
   onLogout,
 }: UserProfileViewProps) {
   const [activeModal, setActiveModal] = useState<'business' | 'bank' | 'notifications' | 'help' | null>(null);
+
+  // Dynamic calculations based on real user data
+  const realSalesTotal = orders.length > 0
+    ? orders.reduce((sum, o) => (o.status !== 'cancelled' ? sum + (o.totalAmount || 0) : sum), 0)
+    : profile.salesTotal || 0;
+
+  const realProductsCount = products.length > 0 ? products.length : profile.productsListedCount || 0;
+
+  const realRating = products.length > 0
+    ? (products.reduce((sum, p) => sum + (p.rating || 5), 0) / products.length).toFixed(1)
+    : (profile.rating || 5.0).toFixed(1);
 
   // Business form state
   const [businessName, setBusinessName] = useState(profile.businessDetails.businessName || '');
@@ -167,22 +182,24 @@ export function UserProfileView({
       <div className="grid grid-cols-3 gap-3">
         <div className="bg-[#FAF3E7] rounded-3xl p-4 border border-amber-900/10 shadow-xs text-center">
           <div className="text-xs font-semibold text-stone-600">Sales</div>
-          <div className="text-xl sm:text-2xl font-extrabold text-stone-900 mt-0.5">
-            ₹{(profile.salesTotal / 1000).toFixed(0)}k
+          <div className="text-lg sm:text-2xl font-extrabold text-stone-900 mt-0.5 truncate">
+            {realSalesTotal >= 1000
+              ? `₹${(realSalesTotal / 1000).toFixed(1)}k`
+              : `₹${realSalesTotal.toLocaleString('en-IN')}`}
           </div>
         </div>
 
         <div className="bg-[#FAF3E7] rounded-3xl p-4 border border-amber-900/10 shadow-xs text-center">
           <div className="text-xs font-semibold text-stone-600">Products</div>
           <div className="text-xl sm:text-2xl font-extrabold text-stone-900 mt-0.5">
-            {profile.productsListedCount}
+            {realProductsCount}
           </div>
         </div>
 
         <div className="bg-[#FAF3E7] rounded-3xl p-4 border border-amber-900/10 shadow-xs text-center">
           <div className="text-xs font-semibold text-stone-600">Rating</div>
           <div className="text-xl sm:text-2xl font-extrabold text-stone-900 mt-0.5 flex items-center justify-center gap-1">
-            <span>{profile.rating}</span>
+            <span>{realRating}</span>
             <Star className="w-4 h-4 fill-amber-500 text-amber-500" />
           </div>
         </div>

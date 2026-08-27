@@ -17,10 +17,16 @@ import {
   ChevronRight,
   Package,
   Image as ImageIcon,
-  AlertCircle
+  AlertCircle,
+  Crop as CropIcon,
+  Download,
+  RotateCcw,
+  Loader2
 } from 'lucide-react';
 import { ReadyProduct, Language, ArtisanUserProfile } from '../types';
 import { compressImage } from '../utils/imageCompressor';
+import { removeImageBackground, triggerImageDownload, ProcessingProgress } from '../utils/imageEditor';
+import { ImageCropperModal } from './ImageCropperModal';
 
 interface AddProductWizardProps {
   language: Language;
@@ -40,16 +46,27 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
 
   // AI Adjustments toggles
   const [aiAdjustments, setAiAdjustments] = useState({
-    removeBg: true,
-    improveLighting: true,
-    sharpen: true,
-    autoCrop: false,
+    removeBg: false,
+    improveLighting: false,
+    sharpen: false,
   });
 
-  // User uploaded image from device
-  const [productImage, setProductImage] = useState<string>('');
+  // Separate image states
   const [originalImage, setOriginalImage] = useState<string>('');
+  const [productImage, setProductImage] = useState<string>(''); // Current working image
+  const [croppedImage, setCroppedImage] = useState<string | null>(null);
+  const [bgRemovedImage, setBgRemovedImage] = useState<string | null>(null);
+
+  // Background removal state
+  const [isRemovingBg, setIsRemovingBg] = useState(false);
+  const [bgRemovalProgress, setBgRemovalProgress] = useState<ProcessingProgress | null>(null);
+
+  // Cropper modal state
+  const [isCropperOpen, setIsCropperOpen] = useState(false);
+
+  // General processing & error states
   const [isProcessingImage, setIsProcessingImage] = useState(false);
+  const [studioErrorMessage, setStudioErrorMessage] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
@@ -75,17 +92,72 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
     const file = e.target.files?.[0];
     if (file) {
       setIsProcessingImage(true);
+      setStudioErrorMessage('');
       setValidationError('');
       try {
-        const compressed = await compressImage(file, 900, 900, 0.82);
+        const compressed = await compressImage(file, 1200, 1200, 0.88);
         setOriginalImage(compressed);
         setProductImage(compressed);
+        setCroppedImage(null);
+        setBgRemovedImage(null);
+        setAiAdjustments({ removeBg: false, improveLighting: false, sharpen: false });
       } catch (err) {
-        console.error('Failed to compress image:', err);
+        console.error('Failed to process image:', err);
+        setStudioErrorMessage('Failed to read image file. Please try another image.');
       } finally {
         setIsProcessingImage(false);
       }
     }
+  };
+
+  // Real client-side AI background removal (100% Free, browser-based)
+  const handleRemoveBackground = async () => {
+    if (!productImage || isRemovingBg) return;
+
+    try {
+      setIsRemovingBg(true);
+      setStudioErrorMessage('');
+      setBgRemovalProgress({ percent: 10, stage: 'Starting local AI background removal...' });
+
+      const result = await removeImageBackground(productImage, (prog) => {
+        setBgRemovalProgress(prog);
+      });
+
+      setProductImage(result.dataUrl);
+      setBgRemovedImage(result.dataUrl);
+      setAiAdjustments((prev) => ({ ...prev, removeBg: true }));
+    } catch (err: any) {
+      console.error('Background removal error:', err);
+      setStudioErrorMessage('Unable to remove background. You can continue with the current image or try again.');
+    } finally {
+      setIsRemovingBg(false);
+      setTimeout(() => {
+        setBgRemovalProgress(null);
+      }, 1500);
+    }
+  };
+
+  // Handle Crop Completion
+  const handleCropComplete = (croppedDataUrl: string) => {
+    setProductImage(croppedDataUrl);
+    setCroppedImage(croppedDataUrl);
+  };
+
+  // Reset to original image
+  const handleResetToOriginal = () => {
+    if (!originalImage) return;
+    setProductImage(originalImage);
+    setCroppedImage(null);
+    setBgRemovedImage(null);
+    setAiAdjustments({ removeBg: false, improveLighting: false, sharpen: false });
+    setStudioErrorMessage('');
+  };
+
+  // Direct image download
+  const handleDownload = () => {
+    if (!productImage) return;
+    const isPng = bgRemovedImage || productImage.startsWith('data:image/png');
+    triggerImageDownload(productImage, `karigar-artisan-craft-${Date.now()}.${isPng ? 'png' : 'jpg'}`);
   };
 
   // Drag slider handler
@@ -301,11 +373,48 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
                 </div>
               </div>
             ) : (
-              /* If image is uploaded: Interactive Before/After Split Comparison Slider */
+              /* If image is uploaded: Interactive Before/After Split Comparison Slider + Photo Studio Controls */
               <div className="space-y-4">
+                {/* Progress / Status Bar during Background Removal */}
+                {isRemovingBg && bgRemovalProgress && (
+                  <div className="p-3.5 bg-amber-100/70 border border-amber-300 rounded-2xl space-y-1.5 shadow-xs animate-pulse">
+                    <div className="flex items-center justify-between text-xs font-bold text-[#963E20]">
+                      <div className="flex items-center gap-1.5">
+                        <Loader2 className="w-4 h-4 animate-spin text-[#963E20]" />
+                        <span>{bgRemovalProgress.stage}</span>
+                      </div>
+                      <span>{bgRemovalProgress.percent}%</span>
+                    </div>
+                    <div className="w-full h-2 bg-amber-200/80 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-[#963E20] transition-all duration-300 rounded-full"
+                        style={{ width: `${bgRemovalProgress.percent}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Error Banner */}
+                {studioErrorMessage && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-700 font-semibold flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{studioErrorMessage}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setStudioErrorMessage('')}
+                      className="text-xs font-bold text-red-800 hover:underline cursor-pointer ml-2"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                )}
+
+                {/* Split Slider Preview */}
                 <div
                   ref={sliderContainerRef}
-                  className="relative w-full h-64 sm:h-72 rounded-3xl overflow-hidden select-none border border-stone-300 shadow-md cursor-ew-resize bg-stone-900"
+                  className="relative w-full h-64 sm:h-72 rounded-3xl overflow-hidden select-none border border-stone-300 shadow-md cursor-ew-resize bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:16px_16px] bg-stone-100"
                   onMouseDown={() => setIsDraggingSlider(true)}
                   onMouseUp={() => setIsDraggingSlider(false)}
                   onMouseLeave={() => setIsDraggingSlider(false)}
@@ -315,24 +424,24 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
                   onTouchMove={handleTouchMove}
                 >
                   {/* Original Layer */}
-                  <div className="absolute inset-0">
+                  <div className="absolute inset-0 flex items-center justify-center bg-stone-900/10">
                     <img
                       src={originalImage}
                       alt="Original photo"
-                      className="w-full h-full object-cover brightness-95"
+                      className="w-full h-full object-contain brightness-95"
                     />
-                    <span className="absolute top-4 right-4 px-3 py-1 rounded-full bg-stone-900/60 backdrop-blur text-white text-xs font-semibold">
+                    <span className="absolute top-4 right-4 px-3 py-1 rounded-full bg-stone-900/70 backdrop-blur text-white text-xs font-semibold shadow-xs">
                       Original
                     </span>
                   </div>
 
-                  {/* AI Enhanced Layer */}
+                  {/* AI Enhanced / Working Layer */}
                   <div
-                    className="absolute inset-0 overflow-hidden"
+                    className="absolute inset-0 overflow-hidden bg-[radial-gradient(#94a3b8_1px,transparent_1px)] [background-size:12px_12px] bg-stone-200/50"
                     style={{ width: `${sliderPosition}%` }}
                   >
                     <div
-                      className="relative h-full"
+                      className="relative h-full flex items-center justify-center"
                       style={{
                         width: sliderContainerRef.current
                           ? `${sliderContainerRef.current.clientWidth}px`
@@ -341,13 +450,14 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
                     >
                       <img
                         src={productImage}
-                        alt="AI Enhanced studio photo"
-                        className={`w-full h-full object-cover ${
+                        alt="Studio working photo"
+                        className={`w-full h-full object-contain ${
                           aiAdjustments.improveLighting ? 'brightness-105 contrast-105 saturate-110' : ''
                         }`}
                       />
-                      <span className="absolute top-4 left-4 px-3 py-1 rounded-full bg-white/90 backdrop-blur text-stone-900 text-xs font-semibold shadow-xs">
-                        Enhanced
+                      <span className="absolute top-4 left-4 px-3 py-1 rounded-full bg-white/95 backdrop-blur text-stone-900 text-xs font-bold shadow-xs flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-[#963E20]" />
+                        {bgRemovedImage ? 'Transparent PNG' : croppedImage ? 'Cropped' : 'Enhanced'}
                       </span>
                     </div>
                   </div>
@@ -363,33 +473,79 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
                   </div>
 
                   {/* Bottom pill message */}
-                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-1.5 rounded-full bg-stone-900/80 backdrop-blur text-white text-xs font-medium flex items-center gap-1.5 shadow-md">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-spin" />
-                    AI Studio Enhanced
+                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3.5 py-1.5 rounded-full bg-stone-900/80 backdrop-blur text-white text-[11px] font-medium flex items-center gap-1.5 shadow-md">
+                    <Sparkles className="w-3 h-3 text-amber-300" />
+                    <span>Slide to compare Before & After</span>
                   </div>
                 </div>
 
-                {/* AI Adjustments Badges */}
-                <div className="space-y-2">
-                  <span className="text-xs font-bold text-stone-800 tracking-wide uppercase">
-                    Photo Studio Adjustments
-                  </span>
-                  <div className="flex flex-wrap gap-2">
+                {/* AI Adjustments & Editing Controls */}
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-stone-800 tracking-wide uppercase">
+                      Studio Editing Tools
+                    </span>
+                    {(croppedImage || bgRemovedImage || productImage !== originalImage) && (
+                      <button
+                        type="button"
+                        onClick={handleResetToOriginal}
+                        className="text-xs font-semibold text-amber-800 hover:text-[#963E20] flex items-center gap-1 cursor-pointer"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        Reset Original
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {/* Remove Background Button */}
                     <button
                       type="button"
-                      onClick={() =>
-                        setAiAdjustments((prev) => ({ ...prev, removeBg: !prev.removeBg }))
-                      }
-                      className={`px-3.5 py-2 rounded-2xl text-xs font-semibold flex items-center gap-1.5 transition-all border cursor-pointer ${
-                        aiAdjustments.removeBg
+                      disabled={isRemovingBg}
+                      onClick={handleRemoveBackground}
+                      className={`p-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all border cursor-pointer ${
+                        bgRemovedImage
                           ? 'bg-[#D1EBE1] text-[#1D5C4A] border-[#A8D8C7] shadow-xs'
-                          : 'bg-stone-100 text-stone-600 border-stone-200'
+                          : isRemovingBg
+                          ? 'bg-amber-100 text-amber-900 border-amber-300 opacity-75'
+                          : 'bg-white hover:bg-amber-50 text-stone-800 border-stone-300 shadow-xs'
                       }`}
                     >
-                      <Wand2 className="w-3.5 h-3.5" />
-                      Clean Background
+                      {isRemovingBg ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-[#963E20]" />
+                      ) : (
+                        <Wand2 className="w-4 h-4 text-[#963E20]" />
+                      )}
+                      <span>{bgRemovedImage ? 'Background Cleaned' : 'Remove Background'}</span>
                     </button>
 
+                    {/* Crop Image Button */}
+                    <button
+                      type="button"
+                      onClick={() => setIsCropperOpen(true)}
+                      className={`p-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all border cursor-pointer ${
+                        croppedImage
+                          ? 'bg-[#D1EBE1] text-[#1D5C4A] border-[#A8D8C7] shadow-xs'
+                          : 'bg-white hover:bg-amber-50 text-stone-800 border-stone-300 shadow-xs'
+                      }`}
+                    >
+                      <CropIcon className="w-4 h-4 text-[#963E20]" />
+                      <span>{croppedImage ? 'Recrop Image' : 'Crop Image'}</span>
+                    </button>
+
+                    {/* Download Processed Image Button */}
+                    <button
+                      type="button"
+                      onClick={handleDownload}
+                      className="p-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all border border-stone-300 bg-white hover:bg-stone-50 text-stone-800 shadow-xs cursor-pointer col-span-2 sm:col-span-1"
+                    >
+                      <Download className="w-4 h-4 text-emerald-700" />
+                      <span>Download Image</span>
+                    </button>
+                  </div>
+
+                  {/* Secondary Lighting & Sharpening Toggles */}
+                  <div className="flex flex-wrap gap-2 pt-1">
                     <button
                       type="button"
                       onClick={() =>
@@ -398,13 +554,13 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
                           improveLighting: !prev.improveLighting,
                         }))
                       }
-                      className={`px-3.5 py-2 rounded-2xl text-xs font-semibold flex items-center gap-1.5 transition-all border cursor-pointer ${
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all border cursor-pointer ${
                         aiAdjustments.improveLighting
-                          ? 'bg-[#D1EBE1] text-[#1D5C4A] border-[#A8D8C7] shadow-xs'
+                          ? 'bg-[#D1EBE1] text-[#1D5C4A] border-[#A8D8C7]'
                           : 'bg-stone-100 text-stone-600 border-stone-200'
                       }`}
                     >
-                      <Sparkles className="w-3.5 h-3.5" />
+                      <Sparkles className="w-3 h-3" />
                       Studio Lighting
                     </button>
 
@@ -413,33 +569,27 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
                       onClick={() =>
                         setAiAdjustments((prev) => ({ ...prev, sharpen: !prev.sharpen }))
                       }
-                      className={`px-3.5 py-2 rounded-2xl text-xs font-semibold flex items-center gap-1.5 transition-all border cursor-pointer ${
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all border cursor-pointer ${
                         aiAdjustments.sharpen
-                          ? 'bg-[#D1EBE1] text-[#1D5C4A] border-[#A8D8C7] shadow-xs'
+                          ? 'bg-[#D1EBE1] text-[#1D5C4A] border-[#A8D8C7]'
                           : 'bg-stone-100 text-stone-600 border-stone-200'
                       }`}
                     >
-                      <Layers className="w-3.5 h-3.5" />
+                      <Layers className="w-3 h-3" />
                       Sharpen Details
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setAiAdjustments((prev) => ({ ...prev, autoCrop: !prev.autoCrop }))
-                      }
-                      className={`px-3.5 py-2 rounded-2xl text-xs font-semibold flex items-center gap-1.5 transition-all border cursor-pointer ${
-                        aiAdjustments.autoCrop
-                          ? 'bg-[#D1EBE1] text-[#1D5C4A] border-[#A8D8C7] shadow-xs'
-                          : 'bg-stone-100 text-stone-600 border-stone-200'
-                      }`}
-                    >
-                      <SlidersHorizontal className="w-3.5 h-3.5" />
-                      Square Center Crop
                     </button>
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* Image Cropper Modal */}
+            {isCropperOpen && productImage && (
+              <ImageCropperModal
+                imageSrc={productImage}
+                onCropComplete={handleCropComplete}
+                onClose={() => setIsCropperOpen(false)}
+              />
             )}
 
             {/* Hidden file inputs */}

@@ -865,6 +865,8 @@ export default function App() {
               <UserProfileView
                 language={language}
                 profile={artisanProfile}
+                products={myArtisanProducts}
+                orders={myArtisanOrders}
                 onUpdateProfile={async (updated) => {
                   setArtisanProfile(updated);
                   // Also update profile in Supabase profiles table
