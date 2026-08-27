@@ -106,29 +106,73 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
     }
   };
 
+  // Drag-and-drop state for image file
+  const [isDraggingFileOver, setIsDraggingFileOver] = useState(false);
+
+  // Common file processor for upload and drag-and-drop
+  const processImageFile = async (file: File) => {
+    if (!file || !file.type.startsWith('image/')) {
+      setStudioErrorMessage('Please select or drop a valid image file (PNG, JPG, WEBP, HEIC).');
+      return;
+    }
+    setIsProcessingImage(true);
+    setStudioErrorMessage('');
+    setValidationError('');
+    try {
+      const compressed = await compressImage(file, 1200, 1200, 0.88);
+      setOriginalImage(compressed);
+      setProductImage(compressed);
+      setCroppedImage(null);
+      setBgRemovedImage(null);
+      setAiAdjustments({ removeBg: false, improveLighting: false });
+    } catch (err) {
+      console.error('Failed to process image:', err);
+      setStudioErrorMessage('Failed to read image file. Please try another image.');
+    } finally {
+      setIsProcessingImage(false);
+    }
+  };
+
   // Image Upload handler with instant compression
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setIsProcessingImage(true);
-      setStudioErrorMessage('');
-      setValidationError('');
-      try {
-        const compressed = await compressImage(file, 1200, 1200, 0.88);
-        setOriginalImage(compressed);
-        setProductImage(compressed);
-        setCroppedImage(null);
-        setBgRemovedImage(null);
-        setAiAdjustments({ removeBg: false, improveLighting: false });
-      } catch (err) {
-        console.error('Failed to process image:', err);
-        setStudioErrorMessage('Failed to read image file. Please try another image.');
-      } finally {
-        setIsProcessingImage(false);
-      }
+      await processImageFile(file);
     }
     // Reset input value so same file can be selected again
     e.target.value = '';
+  };
+
+  // Drag-and-drop event handlers
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDraggingFileOver) setIsDraggingFileOver(true);
+  };
+
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingFileOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only deactivate if cursor actually leaves the container
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setIsDraggingFileOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingFileOver(false);
+
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      await processImageFile(file);
+    }
   };
 
   // Real client-side AI background removal (100% Free, browser-based)
@@ -365,15 +409,31 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
               </p>
             </div>
 
-            {/* Photo Action Upload Area */}
+            {/* Photo Action Upload Area with Drag-and-Drop */}
             {!productImage ? (
               <div
                 onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-[#963E20]/40 hover:border-[#963E20] bg-white rounded-3xl p-8 text-center cursor-pointer transition-all hover:bg-amber-50/40 space-y-4 shadow-xs"
+                onDragOver={handleDragOver}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`border-2 border-dashed rounded-3xl p-8 text-center cursor-pointer transition-all space-y-4 shadow-xs ${
+                  isDraggingFileOver
+                    ? 'border-[#963E20] bg-amber-100/70 ring-4 ring-amber-400/30 scale-[1.01]'
+                    : 'border-[#963E20]/40 hover:border-[#963E20] bg-white hover:bg-amber-50/40'
+                }`}
               >
-                <div className="w-16 h-16 rounded-full bg-amber-100 text-[#963E20] flex items-center justify-center mx-auto shadow-inner">
+                <div
+                  className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto shadow-inner transition-transform ${
+                    isDraggingFileOver
+                      ? 'bg-[#963E20] text-white scale-110'
+                      : 'bg-amber-100 text-[#963E20]'
+                  }`}
+                >
                   {isProcessingImage ? (
                     <Sparkles className="w-8 h-8 animate-spin" />
+                  ) : isDraggingFileOver ? (
+                    <Upload className="w-8 h-8 animate-bounce" />
                   ) : (
                     <ImageIcon className="w-8 h-8" />
                   )}
@@ -381,10 +441,16 @@ export function AddProductWizard({ language, onClose, onProductCreated, artisanP
 
                 <div className="space-y-1">
                   <h3 className="text-base font-bold text-stone-900">
-                    {isProcessingImage ? 'Optimizing Image...' : 'Click to Upload Photo from Device'}
+                    {isProcessingImage
+                      ? 'Optimizing Image...'
+                      : isDraggingFileOver
+                      ? 'Drop image here to add'
+                      : 'Click or Drag & Drop Photo Here'}
                   </h3>
                   <p className="text-xs text-stone-500 max-w-xs mx-auto">
-                    Select a photo from your gallery or files (PNG, JPG, WEBP).
+                    {isDraggingFileOver
+                      ? 'Release to upload immediately'
+                      : 'Select a photo or drag directly from your desktop (PNG, JPG, WEBP).'}
                   </p>
                 </div>
 
