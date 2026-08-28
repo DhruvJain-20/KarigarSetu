@@ -14,12 +14,27 @@ import {
  * Normalizes Supabase snake_case product row to camelCase ReadyProduct
  */
 export function mapDbToProduct(row: any): ReadyProduct {
+  let cleanDesc = row.description || '';
+  let meta: any = {};
+
+  if (typeof row.description === 'string') {
+    const match = row.description.match(/<!--PRODUCT_METADATA:([\s\S]*?)-->/);
+    if (match) {
+      try {
+        meta = JSON.parse(match[1]) || {};
+      } catch (e) {
+        // ignore parse error
+      }
+    }
+  }
+  cleanDesc = cleanDesc.replace(/<!--PRODUCT_METADATA:[\s\S]*?-->/g, '').trim();
+
   return {
     id: row.id,
     name: row.name,
     hindiName: row.hindi_name || row.name,
-    description: row.description || '',
-    hindiDescription: row.hindi_description || row.description || '',
+    description: cleanDesc,
+    hindiDescription: row.hindi_description || cleanDesc || '',
     price: Number(row.price),
     originalPrice: row.original_price ? Number(row.original_price) : undefined,
     category: row.category,
@@ -40,6 +55,22 @@ export function mapDbToProduct(row: any): ReadyProduct {
     tags: Array.isArray(row.tags) ? row.tags : ['Handmade'],
     rating: Number(row.rating) || 5.0,
     reviewsCount: Number(row.reviews_count) || 0,
+    reviews: Array.isArray(row.reviews) ? row.reviews : (Array.isArray(meta.reviews) ? meta.reviews : undefined),
+    rawMaterialCost: row.raw_material_cost != null ? Number(row.raw_material_cost) : (meta.rawMaterialCost ?? undefined),
+    labourHours: row.labour_hours != null ? Number(row.labour_hours) : (meta.labourHours ?? undefined),
+    labourRate: row.labour_rate != null ? Number(row.labour_rate) : (meta.labourRate ?? undefined),
+    labourCost: row.labour_cost != null ? Number(row.labour_cost) : (meta.labourCost ?? undefined),
+    packagingCost: row.packaging_cost != null ? Number(row.packaging_cost) : (meta.packagingCost ?? undefined),
+    transportCost: row.transport_cost != null ? Number(row.transport_cost) : (meta.transportCost ?? undefined),
+    otherCost: row.other_cost != null ? Number(row.other_cost) : (meta.otherCost ?? undefined),
+    productionCost: row.production_cost != null ? Number(row.production_cost) : (meta.productionCost ?? undefined),
+    profitMargin: row.profit_margin != null ? Number(row.profit_margin) : (meta.profitMargin ?? undefined),
+    recommendedPrice: row.recommended_price != null ? Number(row.recommended_price) : (meta.recommendedPrice ?? undefined),
+    finalSelectedPrice: row.final_selected_price != null ? Number(row.final_selected_price) : (meta.finalSelectedPrice ?? Number(row.price)),
+    craftComplexity: row.craft_complexity || meta.craftComplexity || undefined,
+    origin: row.origin || meta.origin || undefined,
+    culturalSignificance: row.cultural_significance || meta.culturalSignificance || undefined,
+    makingTime: row.making_time || meta.makingTime || undefined,
     createdAt: row.created_at || new Date().toISOString(),
   };
 }
@@ -48,33 +79,73 @@ export function mapDbToProduct(row: any): ReadyProduct {
  * Converts camelCase ReadyProduct to Supabase snake_case product row
  */
 export function mapProductToDb(product: ReadyProduct, userId?: string) {
+  const isValidUuid = typeof userId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+  const dbUserId = isValidUuid ? userId : null;
+
+  const metaObj = {
+    rawMaterialCost: product.rawMaterialCost,
+    labourHours: product.labourHours,
+    labourRate: product.labourRate,
+    labourCost: product.labourCost,
+    packagingCost: product.packagingCost,
+    transportCost: product.transportCost,
+    otherCost: product.otherCost,
+    productionCost: product.productionCost,
+    profitMargin: product.profitMargin,
+    recommendedPrice: product.recommendedPrice,
+    finalSelectedPrice: product.finalSelectedPrice,
+    craftComplexity: product.craftComplexity,
+    origin: product.origin,
+    culturalSignificance: product.culturalSignificance,
+    makingTime: product.makingTime,
+    reviews: product.reviews,
+  };
+
+  const cleanDescription = (product.description || '').replace(/<!--PRODUCT_METADATA:[\s\S]*?-->/g, '').trim();
+  const descWithMeta = `${cleanDescription}\n\n<!--PRODUCT_METADATA:${JSON.stringify(metaObj)}-->`;
+
   return {
     id: product.id,
-    user_id: userId || null,
+    user_id: dbUserId,
     name: product.name,
     hindi_name: product.hindiName || product.name,
-    description: product.description,
+    description: descWithMeta,
     hindi_description: product.hindiDescription || product.description,
     price: product.price,
     original_price: product.originalPrice || null,
     category: product.category,
-    craft_type: product.craftType,
-    artisan_id: product.artisanId || userId || 'artisan',
-    artisan_name: product.artisanName,
-    artisan_city: product.artisanCity,
+    craft_type: product.craftType || 'Handmade Craft',
+    artisan_id: product.artisanId || (dbUserId ? dbUserId : 'artisan'),
+    artisan_name: product.artisanName || 'Artisan',
+    artisan_city: product.artisanCity || 'India',
     artisan_avatar: product.artisanAvatar || null,
-    images: product.images,
+    images: Array.isArray(product.images) && product.images.length > 0 ? product.images : ['https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=700&auto=format&fit=crop&q=80'],
     ai_enhanced_image: product.aiEnhancedImage || null,
-    status: product.status,
-    stock: product.stock,
-    is_handmade: product.isHandmade,
-    is_verified_craft: product.isVerifiedCraft,
-    materials: product.materials,
+    status: product.status || 'published',
+    stock: typeof product.stock === 'number' ? product.stock : 1,
+    is_handmade: product.isHandmade !== false,
+    is_verified_craft: product.isVerifiedCraft !== false,
+    materials: Array.isArray(product.materials) ? product.materials : ['Natural Materials'],
     dimensions: product.dimensions || null,
     weight: product.weight || null,
-    tags: product.tags,
-    rating: product.rating,
-    reviews_count: product.reviewsCount,
+    tags: Array.isArray(product.tags) ? product.tags : ['Handmade'],
+    rating: product.rating || 5.0,
+    reviews_count: product.reviewsCount || 0,
+    raw_material_cost: product.rawMaterialCost ?? null,
+    labour_hours: product.labourHours ?? null,
+    labour_rate: product.labourRate ?? null,
+    labour_cost: product.labourCost ?? null,
+    packaging_cost: product.packagingCost ?? null,
+    transport_cost: product.transportCost ?? null,
+    other_cost: product.otherCost ?? null,
+    production_cost: product.productionCost ?? null,
+    profit_margin: product.profitMargin ?? null,
+    recommended_price: product.recommendedPrice ?? null,
+    final_selected_price: product.finalSelectedPrice ?? product.price,
+    craft_complexity: product.craftComplexity ?? null,
+    origin: product.origin ?? null,
+    cultural_significance: product.culturalSignificance ?? null,
+    making_time: product.makingTime ?? null,
     updated_at: new Date().toISOString(),
   };
 }
@@ -385,12 +456,58 @@ export const supabaseService = {
   async createProduct(product: ReadyProduct, userId?: string): Promise<boolean> {
     try {
       const payload = mapProductToDb(product, userId);
-      const { error } = await supabase.from('products').upsert(payload, { onConflict: 'id' });
-      if (error) {
-        console.warn('Supabase createProduct failed:', error.message);
-        return false;
+      
+      // Attempt 1: Full payload upsert
+      const { error: err1 } = await supabase.from('products').upsert(payload, { onConflict: 'id' });
+      if (!err1) return true;
+
+      console.warn('Supabase createProduct full payload notice:', err1.message);
+
+      // Attempt 2: Fallback to core columns in case remote table schema lacks custom columns
+      const corePayload = {
+        id: payload.id,
+        user_id: payload.user_id,
+        name: payload.name,
+        hindi_name: payload.hindi_name,
+        description: payload.description,
+        hindi_description: payload.hindi_description,
+        price: payload.price,
+        original_price: payload.original_price,
+        category: payload.category,
+        craft_type: payload.craft_type,
+        artisan_id: payload.artisan_id,
+        artisan_name: payload.artisan_name,
+        artisan_city: payload.artisan_city,
+        artisan_avatar: payload.artisan_avatar,
+        images: payload.images,
+        ai_enhanced_image: payload.ai_enhanced_image,
+        status: payload.status,
+        stock: payload.stock,
+        is_handmade: payload.is_handmade,
+        is_verified_craft: payload.is_verified_craft,
+        materials: payload.materials,
+        dimensions: payload.dimensions,
+        weight: payload.weight,
+        tags: payload.tags,
+        rating: payload.rating,
+        reviews_count: payload.reviews_count,
+        updated_at: payload.updated_at,
+      };
+
+      const { error: err2 } = await supabase.from('products').upsert(corePayload, { onConflict: 'id' });
+      if (!err2) return true;
+
+      console.warn('Supabase createProduct core payload notice:', err2.message);
+
+      // Attempt 3: If user_id caused foreign key or RLS conflict, retry with user_id: null
+      if (corePayload.user_id) {
+        const anonymousPayload = { ...corePayload, user_id: null };
+        const { error: err3 } = await supabase.from('products').upsert(anonymousPayload, { onConflict: 'id' });
+        if (!err3) return true;
+        console.warn('Supabase createProduct anonymous fallback notice:', err3.message);
       }
-      return true;
+
+      return false;
     } catch (e) {
       console.warn('Supabase createProduct error:', e);
       return false;
@@ -400,15 +517,49 @@ export const supabaseService = {
   async updateProduct(product: ReadyProduct, userId?: string): Promise<boolean> {
     try {
       const payload = mapProductToDb(product, userId);
-      const { error } = await supabase
+      const { error: err1 } = await supabase
         .from('products')
         .update(payload)
         .eq('id', product.id);
-      if (error) {
-        console.warn('Supabase updateProduct failed:', error.message);
-        return false;
-      }
-      return true;
+      if (!err1) return true;
+
+      console.warn('Supabase updateProduct full payload notice:', err1.message);
+
+      // Fallback to core columns
+      const corePayload = {
+        name: payload.name,
+        hindi_name: payload.hindi_name,
+        description: payload.description,
+        hindi_description: payload.hindi_description,
+        price: payload.price,
+        original_price: payload.original_price,
+        category: payload.category,
+        craft_type: payload.craft_type,
+        artisan_name: payload.artisan_name,
+        artisan_city: payload.artisan_city,
+        artisan_avatar: payload.artisan_avatar,
+        images: payload.images,
+        ai_enhanced_image: payload.ai_enhanced_image,
+        status: payload.status,
+        stock: payload.stock,
+        is_handmade: payload.is_handmade,
+        is_verified_craft: payload.is_verified_craft,
+        materials: payload.materials,
+        dimensions: payload.dimensions,
+        weight: payload.weight,
+        tags: payload.tags,
+        rating: payload.rating,
+        reviews_count: payload.reviews_count,
+        updated_at: payload.updated_at,
+      };
+
+      const { error: err2 } = await supabase
+        .from('products')
+        .update(corePayload)
+        .eq('id', product.id);
+      if (!err2) return true;
+
+      return false;
     } catch (e) {
       console.warn('Supabase updateProduct error:', e);
       return false;

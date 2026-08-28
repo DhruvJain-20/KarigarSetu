@@ -175,6 +175,21 @@ export interface ReadyProduct {
   rating: number;
   reviewsCount: number;
   reviews?: ProductReview[];
+  rawMaterialCost?: number;
+  labourHours?: number;
+  labourRate?: number;
+  labourCost?: number;
+  packagingCost?: number;
+  transportCost?: number;
+  otherCost?: number;
+  productionCost?: number;
+  profitMargin?: number;
+  recommendedPrice?: number;
+  finalSelectedPrice?: number;
+  craftComplexity?: string;
+  origin?: string;
+  culturalSignificance?: string;
+  makingTime?: string;
   createdAt: string;
 }
 

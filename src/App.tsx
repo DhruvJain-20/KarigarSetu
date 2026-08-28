@@ -121,6 +121,11 @@ export default function App() {
   const [hireServicesTab, setHireServicesTab] = useState<'explore' | 'jobs' | 'calculator' | 'bookings'>('explore');
 
   // Persistence for products, orders, profile
+  const [deletedProductIds, setDeletedProductIds] = useState<Set<string>>(() => {
+    const saved = safeGetItem<string[]>('ks_deleted_product_ids', []);
+    return new Set(saved || []);
+  });
+
   const [products, setProducts] = useState<ReadyProduct[]>(() => {
     return safeGetItem('ks_ready_products', INITIAL_READY_PRODUCTS);
   });
@@ -242,13 +247,67 @@ export default function App() {
     }
   };
 
+  // Safe merging for Products to ensure newly added user products never disappear
+  const mergeProductsList = (incomingDbProducts: ReadyProduct[]) => {
+    setProducts((prevProducts) => {
+      const mergedMap = new Map<string, ReadyProduct>();
+
+      // 1. Add incoming DB products (except deleted ones)
+      for (const p of incomingDbProducts) {
+        if (p && p.id && !deletedProductIds.has(p.id)) {
+          mergedMap.set(p.id, p);
+        }
+      }
+
+      // 2. Preserve locally created or modified products from previous state
+      for (const p of prevProducts) {
+        if (p && p.id && !deletedProductIds.has(p.id)) {
+          if (!mergedMap.has(p.id)) {
+            // Local product not yet in DB or created locally -> preserve it!
+            mergedMap.set(p.id, p);
+          } else {
+            const dbP = mergedMap.get(p.id)!;
+            mergedMap.set(p.id, {
+              ...dbP,
+              // Retain local detailed pricing and story attributes if DB didn't return them
+              rawMaterialCost: p.rawMaterialCost ?? dbP.rawMaterialCost,
+              labourHours: p.labourHours ?? dbP.labourHours,
+              labourRate: p.labourRate ?? dbP.labourRate,
+              labourCost: p.labourCost ?? dbP.labourCost,
+              packagingCost: p.packagingCost ?? dbP.packagingCost,
+              transportCost: p.transportCost ?? dbP.transportCost,
+              otherCost: p.otherCost ?? dbP.otherCost,
+              productionCost: p.productionCost ?? dbP.productionCost,
+              profitMargin: p.profitMargin ?? dbP.profitMargin,
+              recommendedPrice: p.recommendedPrice ?? dbP.recommendedPrice,
+              finalSelectedPrice: p.finalSelectedPrice ?? dbP.finalSelectedPrice,
+              craftComplexity: p.craftComplexity ?? dbP.craftComplexity,
+              origin: p.origin ?? dbP.origin,
+              culturalSignificance: p.culturalSignificance ?? dbP.culturalSignificance,
+              makingTime: p.makingTime ?? dbP.makingTime,
+              reviews: (p.reviews && p.reviews.length > (dbP.reviews?.length || 0)) ? p.reviews : dbP.reviews,
+            });
+          }
+        }
+      }
+
+      const result = Array.from(mergedMap.values());
+      result.sort((a, b) => {
+        const timeA = new Date(a.createdAt || 0).getTime();
+        const timeB = new Date(b.createdAt || 0).getTime();
+        return timeB - timeA;
+      });
+      return result;
+    });
+  };
+
   // Hydrate application state from Supabase tables
   const loadAppDataFromSupabase = async (userId: string) => {
     try {
       // 1. Fetch Products
       const dbProducts = await supabaseService.fetchProducts();
       if (dbProducts && dbProducts.length > 0) {
-        setProducts(dbProducts);
+        mergeProductsList(dbProducts);
       }
 
       // 2. Fetch Orders
@@ -431,7 +490,7 @@ export default function App() {
         async () => {
           const freshProducts = await supabaseService.fetchProducts();
           if (freshProducts && freshProducts.length > 0) {
-            setProducts(freshProducts);
+            mergeProductsList(freshProducts);
           }
         }
       )
@@ -522,14 +581,26 @@ export default function App() {
   });
 
   // Filter products that belong exclusively to this artisan's account for their Artisan Hub & Catalog
-  const myArtisanProducts = products.filter(
-    (p) => p.artisanId === currentUserId || (authUser?.id && p.artisanId === authUser.id)
-  );
+  const myArtisanProducts = products.filter((p) => {
+    if (authUser?.id && p.artisanId === authUser.id) return true;
+    if (currentUserProfile?.id && p.artisanId === currentUserProfile.id) return true;
+    if (artisanProfile?.id && p.artisanId === artisanProfile.id) return true;
+    if (currentUserId && p.artisanId === currentUserId) return true;
+    if (p.artisanId === 'artisan' || p.artisanId === 'artisan-user') return true;
+    if (p.artisanName && artisanProfile?.name && p.artisanName.trim().toLowerCase() === artisanProfile.name.trim().toLowerCase()) return true;
+    return false;
+  });
 
   // Filter orders that belong exclusively to this artisan's products
-  const myArtisanOrders = orders.filter(
-    (o) => o.artisanId === currentUserId || (authUser?.id && o.artisanId === authUser.id)
-  );
+  const myArtisanOrders = orders.filter((o) => {
+    if (authUser?.id && o.artisanId === authUser.id) return true;
+    if (currentUserProfile?.id && o.artisanId === currentUserProfile.id) return true;
+    if (artisanProfile?.id && o.artisanId === artisanProfile.id) return true;
+    if (currentUserId && o.artisanId === currentUserId) return true;
+    if (o.artisanId === 'artisan' || o.artisanId === 'artisan-user') return true;
+    if (o.artisanName && artisanProfile?.name && o.artisanName.trim().toLowerCase() === artisanProfile.name.trim().toLowerCase()) return true;
+    return false;
+  });
 
   // Artisan portfolios that belong to the current logged-in user
   const myRegisteredKarigars = karigars.filter((k) => {
@@ -545,13 +616,14 @@ export default function App() {
   const handleProductCreated = async (newProduct: ReadyProduct) => {
     const finalProduct: ReadyProduct = {
       ...newProduct,
-      artisanId: authUser?.id || artisanProfile.id,
-      artisanName: artisanProfile.name || newProduct.artisanName,
-      artisanCity: artisanProfile.businessDetails?.city || newProduct.artisanCity,
+      artisanId: authUser?.id || artisanProfile.id || 'artisan',
+      artisanName: artisanProfile.name || newProduct.artisanName || 'Artisan',
+      artisanCity: artisanProfile.businessDetails?.city || newProduct.artisanCity || 'India',
       artisanAvatar: artisanProfile.avatarUrl || newProduct.artisanAvatar,
+      createdAt: newProduct.createdAt || new Date().toISOString(),
     };
 
-    setProducts([finalProduct, ...products]);
+    setProducts((prev) => [finalProduct, ...prev.filter((p) => p.id !== finalProduct.id)]);
     setArtisanProfile((prev) => ({
       ...prev,
       productsListedCount: prev.productsListedCount + 1,
@@ -637,7 +709,13 @@ export default function App() {
   };
 
   const handleDeleteProduct = async (productId: string) => {
-    setProducts(products.filter((p) => p.id !== productId));
+    setDeletedProductIds((prev) => {
+      const next = new Set(prev);
+      next.add(productId);
+      safeSetItem('ks_deleted_product_ids', Array.from(next));
+      return next;
+    });
+    setProducts((prev) => prev.filter((p) => p.id !== productId));
     showToast('Product removed from catalog');
 
     // Persist to Supabase

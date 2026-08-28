@@ -87,9 +87,41 @@ CREATE TABLE IF NOT EXISTS public.products (
   tags TEXT[] DEFAULT ARRAY[]::TEXT[],
   rating NUMERIC DEFAULT 5.0,
   reviews_count INT DEFAULT 0,
+  raw_material_cost NUMERIC,
+  labour_hours NUMERIC,
+  labour_rate NUMERIC,
+  labour_cost NUMERIC,
+  packaging_cost NUMERIC,
+  transport_cost NUMERIC,
+  other_cost NUMERIC,
+  production_cost NUMERIC,
+  profit_margin NUMERIC,
+  recommended_price NUMERIC,
+  final_selected_price NUMERIC,
+  craft_complexity TEXT,
+  origin TEXT,
+  cultural_significance TEXT,
+  making_time TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Optional migration statement for existing databases:
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS raw_material_cost NUMERIC;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS labour_hours NUMERIC;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS labour_rate NUMERIC;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS labour_cost NUMERIC;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS packaging_cost NUMERIC;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS transport_cost NUMERIC;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS other_cost NUMERIC;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS production_cost NUMERIC;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS profit_margin NUMERIC;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS recommended_price NUMERIC;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS final_selected_price NUMERIC;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS craft_complexity TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS origin TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS cultural_significance TEXT;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS making_time TEXT;
 
 -- Enable RLS on products
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
