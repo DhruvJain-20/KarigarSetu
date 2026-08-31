@@ -260,12 +260,6 @@ export function VoiceProductEntry({
     }
   };
 
-  const handleApplySample = (sampleText: string) => {
-    setTranscript(sampleText);
-    setManualText(sampleText);
-    handleProcessTranscript(sampleText);
-  };
-
   return (
     <div className={`bg-gradient-to-br from-[#FFFBF5] to-[#FAF3E7] rounded-3xl border border-amber-900/15 p-4 sm:p-6 shadow-md relative overflow-hidden ${className}`}>
       {/* Decorative craft watermark accent */}
@@ -540,38 +534,6 @@ export function VoiceProductEntry({
             </div>
           </div>
         )}
-
-        {/* Quick Sample Prompts to Try */}
-        <div className="bg-amber-100/40 rounded-2xl p-3 border border-amber-900/5 space-y-2">
-          <div className="text-[11px] font-bold text-stone-700 flex items-center gap-1">
-            <Sparkles className="w-3 h-3 text-[#963E20]" />
-            Quick Example Prompts (Click to test):
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() =>
-                handleApplySample(
-                  'This is a handmade wooden elephant made from solid teak wood. It took me 8 hours to carve. The raw wood cost 500 rupees, labour rate is 100 rupees per hour, packaging costs 50 rupees, and I want to sell it online.'
-                )
-              }
-              className="text-left p-2 bg-white hover:bg-amber-50 rounded-xl border border-stone-200 text-[11px] text-stone-700 hover:text-[#963E20] transition-colors cursor-pointer"
-            >
-              🐘 <span className="font-semibold">Teak Wood Elephant</span> (₹500 mat, 8 hrs @ ₹100/hr)
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                handleApplySample(
-                  'यह एक शुद्ध रेशमी बनारसी साड़ी है। इसमें जरदोजी का काम किया गया है। बनाने में 15 घंटे लगे। कच्चा माल 1200 रुपये, मजदूरी 150 रुपये घंटा और पैकेजिंग 100 रुपये है।'
-                )
-              }
-              className="text-left p-2 bg-white hover:bg-amber-50 rounded-xl border border-stone-200 text-[11px] text-stone-700 hover:text-[#963E20] transition-colors cursor-pointer"
-            >
-              🧵 <span className="font-semibold">बनारसी सिल्क साड़ी</span> (₹1200 माल, 15 घंटे @ ₹150)
-            </button>
-          </div>
-        </div>
 
         {/* Success / Extraction Review Notification */}
         {lastExtracted && (
