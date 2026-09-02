@@ -86,7 +86,7 @@ import { MarketplaceStorefront } from './components/MarketplaceStorefront';
 import { VoiceAssistantModal } from './components/VoiceAssistantModal';
 import { AuthPage } from './components/AuthPage';
 import { supabase } from './supabaseClient';
-import { supabaseService } from './services/supabaseService';
+import { supabaseService, PROFILE_SELECT_COLUMNS, invalidateCache } from './services/supabaseService';
 import { safeGetItem, safeSetItem } from './utils/safeStorage';
 
 const INITIAL_BOOKINGS: BookingRequest[] = [];
@@ -158,7 +158,7 @@ export default function App() {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select(PROFILE_SELECT_COLUMNS)
         .eq('id', user.id)
         .single();
 
@@ -429,89 +429,111 @@ export default function App() {
     safeSetItem('ks_bookings', bookings);
   }, [bookings]);
 
-  // Real-time synchronization across accounts/tabs for jobs, bookings, orders, products, and karigars
+  // Real-time synchronization across accounts/tabs with debouncing and zero continuous polling
   useEffect(() => {
-    // 1. Supabase Realtime Channels
+    let lastFullSyncTime = Date.now();
+    let jobSyncTimer: any = null;
+    let bookingSyncTimer: any = null;
+    let karigarSyncTimer: any = null;
+    let orderSyncTimer: any = null;
+    let productSyncTimer: any = null;
+
+    // 1. Supabase Realtime WebSocket Push Channels
     const channel = supabase
       .channel('ks_realtime_sync_channel')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'job_posts' },
-        async () => {
-          const freshJobs = await supabaseService.fetchJobPosts();
-          if (freshJobs && freshJobs.length > 0) {
-            setJobs(freshJobs);
-            setSelectedJobForApplicants((prev) => {
-              if (!prev) return null;
-              return freshJobs.find((j) => j.id === prev.id) || prev;
-            });
-          }
+        () => {
+          clearTimeout(jobSyncTimer);
+          jobSyncTimer = setTimeout(async () => {
+            invalidateCache('jobs');
+            const freshJobs = await supabaseService.fetchJobPosts(true);
+            if (freshJobs && freshJobs.length > 0) {
+              setJobs(freshJobs);
+              setSelectedJobForApplicants((prev) => {
+                if (!prev) return null;
+                return freshJobs.find((j) => j.id === prev.id) || prev;
+              });
+            }
+          }, 350);
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'bookings' },
-        async () => {
-          const freshBookings = await supabaseService.fetchBookings();
-          if (freshBookings) {
-            setBookings(freshBookings.filter(isGenuineBooking));
-          }
+        () => {
+          clearTimeout(bookingSyncTimer);
+          bookingSyncTimer = setTimeout(async () => {
+            invalidateCache('bookings');
+            const freshBookings = await supabaseService.fetchBookings(true);
+            if (freshBookings) {
+              setBookings(freshBookings.filter(isGenuineBooking));
+            }
+          }, 350);
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'karigars' },
-        async () => {
-          const [freshKarigars, freshBookings] = await Promise.all([
-            supabaseService.fetchKarigars(),
-            supabaseService.fetchBookings(),
-          ]);
-          if (freshKarigars && freshKarigars.length > 0) {
-            setKarigars(freshKarigars.filter(isGenuineKarigar));
-          }
-          if (freshBookings && freshBookings.length > 0) {
-            setBookings(freshBookings.filter(isGenuineBooking));
-          }
+        () => {
+          clearTimeout(karigarSyncTimer);
+          karigarSyncTimer = setTimeout(async () => {
+            invalidateCache('karigars');
+            const freshKarigars = await supabaseService.fetchKarigars(true);
+            if (freshKarigars && freshKarigars.length > 0) {
+              setKarigars(freshKarigars.filter(isGenuineKarigar));
+            }
+          }, 350);
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'orders' },
-        async () => {
-          if (authUser?.id) {
-            const freshOrders = await supabaseService.fetchOrders(authUser.id);
-            if (freshOrders) setOrders(freshOrders);
-          }
+        () => {
+          clearTimeout(orderSyncTimer);
+          orderSyncTimer = setTimeout(async () => {
+            if (authUser?.id) {
+              invalidateCache('orders');
+              const freshOrders = await supabaseService.fetchOrders(authUser.id, true);
+              if (freshOrders) setOrders(freshOrders);
+            }
+          }, 350);
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'products' },
-        async () => {
-          const freshProducts = await supabaseService.fetchProducts();
-          if (freshProducts && freshProducts.length > 0) {
-            mergeProductsList(freshProducts);
-          }
+        () => {
+          clearTimeout(productSyncTimer);
+          productSyncTimer = setTimeout(async () => {
+            invalidateCache('products');
+            const freshProducts = await supabaseService.fetchProducts(true);
+            if (freshProducts && freshProducts.length > 0) {
+              mergeProductsList(freshProducts);
+            }
+          }, 350);
         }
       )
       .subscribe();
 
-    // 2. Periodic background sync (every 6 seconds when document is visible)
-    const pollInterval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
+    // 2. Throttle sync on window focus (only if tab was hidden for > 2 minutes)
+    const handleWindowFocus = () => {
+      const now = Date.now();
+      if (now - lastFullSyncTime > 120000) {
+        lastFullSyncTime = now;
         loadAppDataFromSupabase(authUser?.id || '');
       }
-    }, 6000);
-
-    // 3. Sync on window focus / tab switch
-    const handleWindowFocus = () => {
-      loadAppDataFromSupabase(authUser?.id || '');
     };
     window.addEventListener('focus', handleWindowFocus);
 
     return () => {
       supabase.removeChannel(channel);
-      clearInterval(pollInterval);
+      clearTimeout(jobSyncTimer);
+      clearTimeout(bookingSyncTimer);
+      clearTimeout(karigarSyncTimer);
+      clearTimeout(orderSyncTimer);
+      clearTimeout(productSyncTimer);
       window.removeEventListener('focus', handleWindowFocus);
     };
   }, [authUser?.id]);

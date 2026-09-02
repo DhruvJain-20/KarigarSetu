@@ -425,6 +425,59 @@ export function mapKarigarToDb(karigar: Karigar, userId?: string) {
 }
 
 // ============================================================================
+// COLUMN PROJECTIONS FOR MINIMAL EGRESS (NO SELECT *)
+// ============================================================================
+export const PRODUCT_SELECT_COLUMNS = 'id, user_id, name, hindi_name, description, hindi_description, price, original_price, category, craft_type, artisan_id, artisan_name, artisan_city, artisan_avatar, images, ai_enhanced_image, status, stock, is_handmade, is_verified_craft, materials, dimensions, weight, tags, rating, reviews_count, raw_material_cost, labour_hours, labour_rate, labour_cost, packaging_cost, transport_cost, other_cost, production_cost, profit_margin, recommended_price, final_selected_price, craft_complexity, origin, cultural_significance, making_time, created_at';
+
+export const ORDER_SELECT_COLUMNS = 'id, user_id, order_number, product_id, product_name, product_image, artisan_id, artisan_name, buyer_name, buyer_phone, buyer_address, buyer_type, quantity, unit_price, total_amount, status, ordered_at, estimated_delivery, tracking_number, payment_method, payment_status, created_at';
+
+export const BOOKING_SELECT_COLUMNS = 'id, user_id, karigar_id, karigar_name, karigar_trade, client_name, client_phone, client_address, service_date, job_description, estimated_budget, status, created_at';
+
+export const JOB_POST_SELECT_COLUMNS = 'id, user_id, title, trade, description, city, locality, budget_type, budget_amount, unit_label, duration_days, start_date, is_urgent, client_name, client_phone, applicants_count, applicants, status, created_at';
+
+export const KARIGAR_SELECT_COLUMNS = 'id, user_id, name, hindi_name, trade, specialization, hindi_specialization, experience_years, city, locality, daily_rate, hourly_rate, unit_rate_label, rating, total_reviews, phone, whatsapp, avatar_url, portfolio_images, is_aadhaar_verified, is_skill_certified, certification_body, is_available_today, languages, bio, hindi_bio, completed_jobs_count, skills, reviews, created_at';
+
+export const PROFILE_SELECT_COLUMNS = 'id, full_name, email, role, language, avatar_url, phone, business_name, workshop_address, city, state, udyam_reg_no, about_story, upi_id, bank_name, account_number, account_holder, ifsc_code, created_at';
+
+// ============================================================================
+// IN-MEMORY CACHE & REQUEST DEDUPLICATION LAYER
+// ============================================================================
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+
+const memoryCache = new Map<string, CacheEntry<any>>();
+const inFlightRequests = new Map<string, Promise<any>>();
+const DEFAULT_CACHE_TTL_MS = 45000; // 45 seconds cache TTL
+
+export function getCachedData<T>(key: string, maxAgeMs = DEFAULT_CACHE_TTL_MS): T | null {
+  const entry = memoryCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > maxAgeMs) {
+    memoryCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+export function setCachedData<T>(key: string, data: T) {
+  memoryCache.set(key, { data, timestamp: Date.now() });
+}
+
+export function invalidateCache(prefix?: string) {
+  if (!prefix) {
+    memoryCache.clear();
+    return;
+  }
+  for (const key of Array.from(memoryCache.keys())) {
+    if (key.startsWith(prefix)) {
+      memoryCache.delete(key);
+    }
+  }
+}
+
+// ============================================================================
 // SUPABASE DATA API SERVICE
 // ============================================================================
 
@@ -432,29 +485,66 @@ export const supabaseService = {
   // --------------------------------------------------------------------------
   // PRODUCTS
   // --------------------------------------------------------------------------
-  async fetchProducts(): Promise<ReadyProduct[] | null> {
-    try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.warn('Supabase fetchProducts notice:', error.message);
-        return null;
-      }
-      if (data && data.length > 0) {
-        return data.map(mapDbToProduct);
-      }
-      return null;
-    } catch (e) {
-      console.warn('Supabase fetchProducts error:', e);
-      return null;
+  async fetchProducts(forceRefresh = false): Promise<ReadyProduct[] | null> {
+    const cacheKey = 'products_all';
+    if (!forceRefresh) {
+      const cached = getCachedData<ReadyProduct[]>(cacheKey);
+      if (cached) return cached;
     }
+
+    if (inFlightRequests.has(cacheKey)) {
+      return inFlightRequests.get(cacheKey)!;
+    }
+
+    const requestPromise = (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('products')
+          .select(PRODUCT_SELECT_COLUMNS)
+          .order('created_at', { ascending: false })
+          .limit(60);
+
+        if (error) {
+          // If custom columns fail on a legacy table schema, fallback to basic core columns
+          const { data: fallbackData, error: fbError } = await supabase
+            .from('products')
+            .select('id, user_id, name, hindi_name, description, price, original_price, category, craft_type, artisan_name, artisan_city, artisan_avatar, images, status, stock, materials, tags, rating, reviews_count, created_at')
+            .order('created_at', { ascending: false })
+            .limit(60);
+
+          if (fbError) {
+            console.warn('Supabase fetchProducts notice:', fbError.message);
+            return null;
+          }
+          if (fallbackData && fallbackData.length > 0) {
+            const mapped = fallbackData.map(mapDbToProduct);
+            setCachedData(cacheKey, mapped);
+            return mapped;
+          }
+          return null;
+        }
+
+        if (data && data.length > 0) {
+          const mapped = data.map(mapDbToProduct);
+          setCachedData(cacheKey, mapped);
+          return mapped;
+        }
+        return null;
+      } catch (e) {
+        console.warn('Supabase fetchProducts error:', e);
+        return null;
+      } finally {
+        inFlightRequests.delete(cacheKey);
+      }
+    })();
+
+    inFlightRequests.set(cacheKey, requestPromise);
+    return requestPromise;
   },
 
   async createProduct(product: ReadyProduct, userId?: string): Promise<boolean> {
     try {
+      invalidateCache('products');
       const payload = mapProductToDb(product, userId);
       
       // Attempt 1: Full payload upsert
@@ -516,6 +606,7 @@ export const supabaseService = {
 
   async updateProduct(product: ReadyProduct, userId?: string): Promise<boolean> {
     try {
+      invalidateCache('products');
       const payload = mapProductToDb(product, userId);
       const { error: err1 } = await supabase
         .from('products')
@@ -568,6 +659,7 @@ export const supabaseService = {
 
   async updateProductStock(productId: string, newStock: number, newStatus: 'published' | 'sold_out'): Promise<boolean> {
     try {
+      invalidateCache('products');
       const { error } = await supabase
         .from('products')
         .update({
@@ -589,6 +681,7 @@ export const supabaseService = {
 
   async deleteProduct(productId: string): Promise<boolean> {
     try {
+      invalidateCache('products');
       const { error } = await supabase
         .from('products')
         .delete()
@@ -607,27 +700,56 @@ export const supabaseService = {
   // --------------------------------------------------------------------------
   // ORDERS
   // --------------------------------------------------------------------------
-  async fetchOrders(userId?: string): Promise<ProductOrder[] | null> {
-    try {
-      let query = supabase.from('orders').select('*').order('created_at', { ascending: false });
-      
-      const { data, error } = await query;
-      if (error) {
-        console.warn('Supabase fetchOrders notice:', error.message);
-        return null;
-      }
-      if (data && data.length > 0) {
-        return data.map(mapDbToOrder);
-      }
-      return null;
-    } catch (e) {
-      console.warn('Supabase fetchOrders error:', e);
-      return null;
+  async fetchOrders(userId?: string, forceRefresh = false): Promise<ProductOrder[] | null> {
+    const cacheKey = `orders_${userId || 'all'}`;
+    if (!forceRefresh) {
+      const cached = getCachedData<ProductOrder[]>(cacheKey);
+      if (cached) return cached;
     }
+
+    if (inFlightRequests.has(cacheKey)) {
+      return inFlightRequests.get(cacheKey)!;
+    }
+
+    const requestPromise = (async () => {
+      try {
+        let query = supabase
+          .from('orders')
+          .select(ORDER_SELECT_COLUMNS)
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (userId && userId.trim()) {
+          query = query.or(`user_id.eq.${userId},artisan_id.eq.${userId}`);
+        }
+        
+        const { data, error } = await query;
+        if (error) {
+          console.warn('Supabase fetchOrders notice:', error.message);
+          return null;
+        }
+        if (data && data.length > 0) {
+          const mapped = data.map(mapDbToOrder);
+          setCachedData(cacheKey, mapped);
+          return mapped;
+        }
+        return null;
+      } catch (e) {
+        console.warn('Supabase fetchOrders error:', e);
+        return null;
+      } finally {
+        inFlightRequests.delete(cacheKey);
+      }
+    })();
+
+    inFlightRequests.set(cacheKey, requestPromise);
+    return requestPromise;
   },
 
   async createOrder(order: ProductOrder, userId?: string): Promise<boolean> {
     try {
+      invalidateCache('orders');
+      invalidateCache('products');
       const payload = mapOrderToDb(order, userId);
       const { error } = await supabase.from('orders').upsert(payload, { onConflict: 'id' });
       if (error) {
@@ -643,6 +765,7 @@ export const supabaseService = {
 
   async updateOrderStatus(orderId: string, status: ProductOrder['status']): Promise<boolean> {
     try {
+      invalidateCache('orders');
       const { error } = await supabase
         .from('orders')
         .update({ status, updated_at: new Date().toISOString() })
@@ -661,89 +784,60 @@ export const supabaseService = {
   // --------------------------------------------------------------------------
   // BOOKINGS
   // --------------------------------------------------------------------------
-  async fetchBookings(): Promise<BookingRequest[] | null> {
-    try {
-      const bookingMap = new Map<string, BookingRequest>();
-
-      // 1. Fetch from bookings table
-      const { data: dbBookings } = await supabase
-        .from('bookings')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (dbBookings && dbBookings.length > 0) {
-        for (const row of dbBookings) {
-          const b = mapDbToBooking(row);
-          if (b && b.id) {
-            bookingMap.set(b.id, b);
-          }
-        }
-      }
-
-      // 2. Also aggregate direct portfolio inquiries stored on karigars table
-      const { data: kgs } = await supabase.from('karigars').select('*');
-      if (kgs && kgs.length > 0) {
-        for (const kg of kgs) {
-          if (Array.isArray(kg.reviews)) {
-            for (const item of kg.reviews) {
-              if (item && item.type === 'inquiry' && item.id) {
-                const existing = bookingMap.get(item.id);
-                // Prefer non-pending status if available (e.g. accepted, in_progress, completed, cancelled)
-                let resolvedStatus = item.status || 'pending';
-                if (existing) {
-                  if (existing.status && existing.status !== 'pending') {
-                    resolvedStatus = existing.status;
-                  } else if (item.status && item.status !== 'pending') {
-                    resolvedStatus = item.status;
-                  }
-                }
-
-                const merged: BookingRequest = {
-                  id: item.id,
-                  karigarId: item.karigarId || kg.id,
-                  karigarName: item.karigarName || kg.name,
-                  karigarTrade: item.karigarTrade || kg.trade,
-                  karigarPhone: item.karigarPhone || kg.phone || existing?.karigarPhone || '',
-                  clientUserId: item.clientUserId || existing?.clientUserId || undefined,
-                  clientName: item.clientName || existing?.clientName || 'Client',
-                  clientPhone: item.clientPhone || existing?.clientPhone || '',
-                  clientAddress: item.clientAddress || existing?.clientAddress || '',
-                  serviceDate: item.serviceDate || existing?.serviceDate || '',
-                  jobDescription: item.jobDescription || existing?.jobDescription || '',
-                  estimatedBudget: Number(item.estimatedBudget) || existing?.estimatedBudget || 0,
-                  status: resolvedStatus,
-                  createdAt: item.createdAt || existing?.createdAt || new Date().toISOString(),
-                };
-                bookingMap.set(item.id, merged);
-              }
-            }
-          }
-        }
-      }
-
-      const list = Array.from(bookingMap.values());
-      if (list.length > 0) {
-        list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        return list;
-      }
-      return null;
-    } catch (e) {
-      console.warn('Supabase fetchBookings error:', e);
-      return null;
+  async fetchBookings(forceRefresh = false): Promise<BookingRequest[] | null> {
+    const cacheKey = 'bookings_all';
+    if (!forceRefresh) {
+      const cached = getCachedData<BookingRequest[]>(cacheKey);
+      if (cached) return cached;
     }
+
+    if (inFlightRequests.has(cacheKey)) {
+      return inFlightRequests.get(cacheKey)!;
+    }
+
+    const requestPromise = (async () => {
+      try {
+        const { data: dbBookings, error } = await supabase
+          .from('bookings')
+          .select(BOOKING_SELECT_COLUMNS)
+          .order('created_at', { ascending: false })
+          .limit(60);
+
+        if (error) {
+          console.warn('Supabase fetchBookings notice:', error.message);
+          return null;
+        }
+
+        if (dbBookings && dbBookings.length > 0) {
+          const list = dbBookings.map(mapDbToBooking);
+          setCachedData(cacheKey, list);
+          return list;
+        }
+        return null;
+      } catch (e) {
+        console.warn('Supabase fetchBookings error:', e);
+        return null;
+      } finally {
+        inFlightRequests.delete(cacheKey);
+      }
+    })();
+
+    inFlightRequests.set(cacheKey, requestPromise);
+    return requestPromise;
   },
 
   async createBooking(booking: BookingRequest, userId?: string): Promise<boolean> {
     try {
-      // 1. Save to bookings table (without forcing userId to avoid RLS block on anon client)
+      invalidateCache('bookings');
+      // 1. Save to bookings table
       const payload = mapBookingToDb(booking, null);
       await supabase.from('bookings').upsert(payload, { onConflict: 'id' });
 
-      // 2. Also attach direct inquiry to the target Karigar's record in Supabase
+      // 2. Also attach direct inquiry to the target Karigar's record if needed
       if (booking.karigarId) {
         const { data: kg } = await supabase
           .from('karigars')
-          .select('*')
+          .select('id, name, trade, phone, reviews')
           .eq('id', booking.karigarId)
           .maybeSingle();
 
@@ -774,6 +868,7 @@ export const supabaseService = {
               updated_at: new Date().toISOString(),
             })
             .eq('id', kg.id);
+          invalidateCache('karigars');
         }
       }
       return true;
@@ -783,8 +878,9 @@ export const supabaseService = {
     }
   },
 
-  async updateBookingStatus(bookingId: string, status: BookingRequest['status']): Promise<boolean> {
+  async updateBookingStatus(bookingId: string, status: BookingRequest['status'], karigarId?: string): Promise<boolean> {
     try {
+      invalidateCache('bookings');
       // 1. Update in bookings table
       const { error: bErr } = await supabase
         .from('bookings')
@@ -795,26 +891,25 @@ export const supabaseService = {
         console.warn('Supabase updateBookingStatus bookings notice:', bErr.message);
       }
 
-      // 2. Also update on karigars table if attached in reviews
-      const { data: kgs } = await supabase.from('karigars').select('*');
-      if (kgs) {
-        for (const kg of kgs) {
-          if (Array.isArray(kg.reviews)) {
-            let hasMatch = false;
-            const updatedReviews = kg.reviews.map((r: any) => {
-              if (r && r.id === bookingId) {
-                hasMatch = true;
-                return { ...r, status, updatedAt: new Date().toISOString() };
-              }
-              return r;
-            });
-            if (hasMatch) {
-              await supabase
-                .from('karigars')
-                .update({ reviews: updatedReviews, updated_at: new Date().toISOString() })
-                .eq('id', kg.id);
+      // 2. Update specific karigar reviews if karigarId is provided or if inquiry exists
+      if (karigarId) {
+        const { data: kg } = await supabase
+          .from('karigars')
+          .select('id, reviews')
+          .eq('id', karigarId)
+          .maybeSingle();
+        if (kg && Array.isArray(kg.reviews)) {
+          const updatedReviews = kg.reviews.map((r: any) => {
+            if (r && r.id === bookingId) {
+              return { ...r, status, updatedAt: new Date().toISOString() };
             }
-          }
+            return r;
+          });
+          await supabase
+            .from('karigars')
+            .update({ reviews: updatedReviews, updated_at: new Date().toISOString() })
+            .eq('id', kg.id);
+          invalidateCache('karigars');
         }
       }
       return true;
@@ -824,24 +919,26 @@ export const supabaseService = {
     }
   },
 
-  async deleteBooking(bookingId: string): Promise<boolean> {
+  async deleteBooking(bookingId: string, karigarId?: string): Promise<boolean> {
     try {
+      invalidateCache('bookings');
       // 1. Delete from bookings table
       await supabase.from('bookings').delete().eq('id', bookingId);
 
-      // 2. Delete from karigars table reviews
-      const { data: kgs } = await supabase.from('karigars').select('*');
-      if (kgs) {
-        for (const kg of kgs) {
-          if (Array.isArray(kg.reviews)) {
-            const filtered = kg.reviews.filter((r: any) => r.id !== bookingId);
-            if (filtered.length !== kg.reviews.length) {
-              await supabase
-                .from('karigars')
-                .update({ reviews: filtered, updated_at: new Date().toISOString() })
-                .eq('id', kg.id);
-            }
-          }
+      // 2. Delete from specific karigar reviews if karigarId is provided
+      if (karigarId) {
+        const { data: kg } = await supabase
+          .from('karigars')
+          .select('id, reviews')
+          .eq('id', karigarId)
+          .maybeSingle();
+        if (kg && Array.isArray(kg.reviews)) {
+          const filtered = kg.reviews.filter((r: any) => r.id !== bookingId);
+          await supabase
+            .from('karigars')
+            .update({ reviews: filtered, updated_at: new Date().toISOString() })
+            .eq('id', kg.id);
+          invalidateCache('karigars');
         }
       }
       return true;
@@ -854,29 +951,50 @@ export const supabaseService = {
   // --------------------------------------------------------------------------
   // JOB POSTS
   // --------------------------------------------------------------------------
-  async fetchJobPosts(): Promise<JobPost[] | null> {
-    try {
-      const { data, error } = await supabase
-        .from('job_posts')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.warn('Supabase fetchJobPosts notice:', error.message);
-        return null;
-      }
-      if (data && data.length > 0) {
-        return data.map(mapDbToJobPost);
-      }
-      return null;
-    } catch (e) {
-      console.warn('Supabase fetchJobPosts error:', e);
-      return null;
+  async fetchJobPosts(forceRefresh = false): Promise<JobPost[] | null> {
+    const cacheKey = 'jobs_all';
+    if (!forceRefresh) {
+      const cached = getCachedData<JobPost[]>(cacheKey);
+      if (cached) return cached;
     }
+
+    if (inFlightRequests.has(cacheKey)) {
+      return inFlightRequests.get(cacheKey)!;
+    }
+
+    const requestPromise = (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('job_posts')
+          .select(JOB_POST_SELECT_COLUMNS)
+          .order('created_at', { ascending: false })
+          .limit(60);
+
+        if (error) {
+          console.warn('Supabase fetchJobPosts notice:', error.message);
+          return null;
+        }
+        if (data && data.length > 0) {
+          const mapped = data.map(mapDbToJobPost);
+          setCachedData(cacheKey, mapped);
+          return mapped;
+        }
+        return null;
+      } catch (e) {
+        console.warn('Supabase fetchJobPosts error:', e);
+        return null;
+      } finally {
+        inFlightRequests.delete(cacheKey);
+      }
+    })();
+
+    inFlightRequests.set(cacheKey, requestPromise);
+    return requestPromise;
   },
 
   async createJobPost(job: JobPost, userId?: string): Promise<boolean> {
     try {
+      invalidateCache('jobs');
       const payload = mapJobPostToDb(job, userId);
       const { error } = await supabase.from('job_posts').upsert(payload, { onConflict: 'id' });
       if (error) {
@@ -897,12 +1015,13 @@ export const supabaseService = {
     fullJob?: JobPost
   ): Promise<boolean> {
     try {
-      // 1. Fetch current job record or fallback
+      invalidateCache('jobs');
+      // 1. Fetch current job record description
       let cleanDesc = (fallbackDescription || (fullJob ? fullJob.description : '') || '').replace(/<!--APPLICANTS_DATA:[\s\S]*?-->/g, '').trim();
 
-      const { data: jobRow, error: fetchErr } = await supabase
+      const { data: jobRow } = await supabase
         .from('job_posts')
-        .select('*')
+        .select('id, description, applicants_count')
         .eq('id', jobId)
         .maybeSingle();
 
@@ -915,7 +1034,6 @@ export const supabaseService = {
         : cleanDesc;
 
       if (jobRow) {
-        // Try updating description with encoded applicants & count
         const { error: err1 } = await supabase
           .from('job_posts')
           .update({
@@ -929,7 +1047,6 @@ export const supabaseService = {
           console.warn('Supabase updateJobApplicants description notice:', err1.message);
         }
 
-        // Also attempt direct column update if table has applicants column
         try {
           await supabase
             .from('job_posts')
@@ -943,7 +1060,6 @@ export const supabaseService = {
           // column may not exist in standard schema
         }
       } else if (fullJob) {
-        // Row not in Supabase yet - upsert entire job post
         const payload = mapJobPostToDb({
           ...fullJob,
           applicants,
@@ -961,6 +1077,7 @@ export const supabaseService = {
 
   async deleteJobPost(jobId: string): Promise<boolean> {
     try {
+      invalidateCache('jobs');
       const { error } = await supabase.from('job_posts').delete().eq('id', jobId);
       if (error) {
         console.warn('Supabase deleteJobPost failed:', error.message);
@@ -975,6 +1092,7 @@ export const supabaseService = {
 
   async incrementJobApplicants(jobId: string, currentCount: number): Promise<boolean> {
     try {
+      invalidateCache('jobs');
       const { error } = await supabase
         .from('job_posts')
         .update({ applicants_count: currentCount + 1, updated_at: new Date().toISOString() })
@@ -993,29 +1111,50 @@ export const supabaseService = {
   // --------------------------------------------------------------------------
   // KARIGARS (ARTISAN DIRECTORY)
   // --------------------------------------------------------------------------
-  async fetchKarigars(): Promise<Karigar[] | null> {
-    try {
-      const { data, error } = await supabase
-        .from('karigars')
-        .select('*')
-        .order('rating', { ascending: false });
-
-      if (error) {
-        console.warn('Supabase fetchKarigars notice:', error.message);
-        return null;
-      }
-      if (data && data.length > 0) {
-        return data.map(mapDbToKarigar);
-      }
-      return null;
-    } catch (e) {
-      console.warn('Supabase fetchKarigars error:', e);
-      return null;
+  async fetchKarigars(forceRefresh = false): Promise<Karigar[] | null> {
+    const cacheKey = 'karigars_all';
+    if (!forceRefresh) {
+      const cached = getCachedData<Karigar[]>(cacheKey);
+      if (cached) return cached;
     }
+
+    if (inFlightRequests.has(cacheKey)) {
+      return inFlightRequests.get(cacheKey)!;
+    }
+
+    const requestPromise = (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('karigars')
+          .select(KARIGAR_SELECT_COLUMNS)
+          .order('rating', { ascending: false })
+          .limit(60);
+
+        if (error) {
+          console.warn('Supabase fetchKarigars notice:', error.message);
+          return null;
+        }
+        if (data && data.length > 0) {
+          const mapped = data.map(mapDbToKarigar);
+          setCachedData(cacheKey, mapped);
+          return mapped;
+        }
+        return null;
+      } catch (e) {
+        console.warn('Supabase fetchKarigars error:', e);
+        return null;
+      } finally {
+        inFlightRequests.delete(cacheKey);
+      }
+    })();
+
+    inFlightRequests.set(cacheKey, requestPromise);
+    return requestPromise;
   },
 
   async registerKarigar(karigar: Karigar, userId?: string): Promise<boolean> {
     try {
+      invalidateCache('karigars');
       const payload = mapKarigarToDb(karigar, userId);
       const { error } = await supabase.from('karigars').upsert(payload, { onConflict: 'id' });
       if (error) {
@@ -1034,6 +1173,7 @@ export const supabaseService = {
   // --------------------------------------------------------------------------
   async updateUserProfile(userId: string, data: Partial<UserProfile>): Promise<boolean> {
     try {
+      invalidateCache(`profile_${userId}`);
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -1053,3 +1193,4 @@ export const supabaseService = {
     }
   },
 };
+

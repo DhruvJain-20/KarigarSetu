@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Karigar, Language, TradeCategory, UserProfile } from '../types';
 import { TRADE_META, TRANSLATIONS } from '../data/translations';
+import { compressImage } from '../utils/imageCompressor';
 
 interface RegisterKarigarModalProps {
   language: Language;
@@ -140,31 +141,30 @@ export const RegisterKarigarModal: React.FC<RegisterKarigarModalProps> = ({
     }
   };
 
-  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          setAvatarUrl(reader.result);
-        }
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressed = await compressImage(file, 400, 400, 0.72);
+        setAvatarUrl(compressed);
+      } catch (err) {
+        console.warn('Avatar compression error:', err);
+      }
     }
   };
 
-  const handlePortfolioPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePortfolioPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files) {
-      Array.from(files).forEach((file) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          if (typeof reader.result === 'string') {
-            setPortfolioImages((prev) => [...prev, reader.result as string]);
-          }
-        };
-        reader.readAsDataURL(file);
-      });
+      const fileList = Array.from(files);
+      for (const file of fileList) {
+        try {
+          const compressed = await compressImage(file, 800, 800, 0.75);
+          setPortfolioImages((prev) => [...prev, compressed]);
+        } catch (err) {
+          console.warn('Portfolio image compression error:', err);
+        }
+      }
     }
   };
 
